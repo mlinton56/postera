@@ -1,0 +1,23 @@
+{
+    "name": "$NAME",
+    "version": "$VERSION",
+    "description": "$DESCRIPTION",
+    "license": "MIT",
+    "files": [
+        "README.md", "LICENSE", $FILES
+    ],
+    "main": "$NAME.js",
+    "types": "$NAME.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/mlinton56/postera"
+    },
+    "engines": {
+        "node": ">=6.10.3"
+    },
+    "dependencies": {
+        "@types/node": "^7.0.22",
+        "source-map": "^0.5.6",
+        "source-map-support": "^0.4.14"
+    }
+}

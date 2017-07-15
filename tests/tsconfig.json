@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "target": "es6",
+        "outDir": "js",
+        "sourceMap": true,
+        "alwaysStrict": true,
+        "module": "commonjs",
+        "noImplicitAny": false,
+        "removeComments": true,
+        "types": ["node"]
+    },
+    "files": [
+        "tshell-tests.ts",
+        "qio-tests.ts"
+    ]
+}

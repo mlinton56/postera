@@ -1,0 +1,5 @@
+*.js
+t*.ts
+t*.sh
+js/
+node_modules/
