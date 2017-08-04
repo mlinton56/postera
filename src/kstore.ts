@@ -32,8 +32,8 @@ as maps of strings or objects accessed by an item identifier (string).
     // Delete an association
     await store.valueDel('object')
 
-Note that values are always converted to and from strings with
-JSON.stringify and JSON.parse. To avoid the conversion, use string values:
+Note that values are normally converted to and from strings with
+JSON.stringify and JSON.parse. To avoid conversion use string values:
 
     await store.strValueMod('object', 'this is a string')
 
@@ -43,7 +43,7 @@ A map is like another value (it can be deleted with valueDel, for example)
 but allows access by item without retrieving the full map.
 
     // Associate a map.
-    await store.mapMod('map', {a: 3, b: 4}
+    await store.mapMod('map', {a: 3, b: 4})
 
     //
     // Access an item without getting the entire map. In this case
@@ -51,8 +51,21 @@ but allows access by item without retrieving the full map.
     //
     await store.mapItem('map', 'a')
 
+    // Modify an item within a map.
+    if (await store.mapItemMod('map', 'c', 5)) {
+        // Returns true if the item is new to the map.
+    }
+
     // Access the entire map at once--this returns {a: 3, b: 4}.
     await store.map('map')
+
+As with values, map items are normally converted to and from strings
+with JSON.stringify and JSON.parse. To avoid conversion use string maps:
+
+    await store.strMapMod('map', {'a': 'a string', b: 'b string'})
+    await store.strMapItem('map', 'a')
+    await store.strMapItemMod('map', 'c', 'c string')
+    await store.strMap('map')
 EOF
  *
  */
