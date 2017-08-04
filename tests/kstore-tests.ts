@@ -5,7 +5,7 @@
  * Hopefully that doesn't mean the KeyValueStore interface is also convoluted!
  */
 
-import * from 'postera/kstore'
+import * as kstore from 'postera/kstore'
 import logger from 'postera/slogger'
 
 export interface BatchInfo {
@@ -13,14 +13,20 @@ export interface BatchInfo {
     keys: string[]
 }
 
-const store = kstore.RedisStore({host: process.env.REDIS_HOST || 'localhost'})
+const store = kstore.redisStore({host: process.env.REDIS_HOST || 'localhost'})
+
+process.on('uncaughtException', (err) => logger.error(err))
+process.on('unhandledRejection', (err, promise) => logger.error(err))
 
 async function main() {
     const batchId = (await store.valueIncr('batchId')).toString()
+    logger.info('batchId = ' + batchId)
+
     await addBatch(batchId, 'user', {
         'first': 'This is the first item',
         'second': 'This is the second item'
     })
+    logger.info('added batch ' + batchId)
 
     await status('user', '100')
     await status('user', batchId)
@@ -30,6 +36,8 @@ async function main() {
     await status('user', batchId)
     await addResult(batchId, 'second', 'This is the second result')
     await status('user', batchId)
+
+    store.impl.quit()
 }
 
 async function addBatch(batchId: string, user: string, batch) {
@@ -46,7 +54,7 @@ async function addResult(b: string, item: string, result: string) {
             const info = await store.mapItem(b, 'info')
             const results = await store.map(b + '/')
             if (info && results) {
-                console.log(results)
+                logger.info(JSON.stringify(results))
             } else {
                 logger.error('Cannot get info or results for ' + b)
             }
@@ -55,13 +63,14 @@ async function addResult(b: string, item: string, result: string) {
 }
 
 async function status(user: string, b: string) {
+    logger.info('getting status of batch ' + b + ' for ' + user)
     const info = await store.mapItem(b, 'info')
     if (!info) {
         logger.error('Unknown batch ' + b)
     } else if (info.user !== user) {
         logger.error('Wrong user')
     } else {
-        console.log(await store.map(b + '/'))
+        logger.info(JSON.stringify(await store.map(b + '/')))
     }
 }
 

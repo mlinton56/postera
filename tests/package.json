@@ -1,0 +1,11 @@
+{
+    "name": "tests",
+    "version": "0.0.0",
+    "dependencies": {
+        "@types/node": "^7.0.22",
+        "amqp": "~0.2.4",
+        "amqplib": "~0.4.1",
+        "postera": "file:../build/postera",
+        "redis": "^2.7.1"
+    }
+}

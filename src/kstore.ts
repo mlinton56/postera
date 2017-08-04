@@ -149,7 +149,7 @@ export class RedisStore implements KeyValueStore {
 
     mapItem(key: string, i: string): Promise<any> {
         return new Promise<any>((resolve, reject) =>
-            this.impl.get(key, i, parseResult(resolve, reject))
+            this.impl.hget(key, i, parseResult(resolve, reject))
         )
     }
 

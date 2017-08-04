@@ -11,6 +11,7 @@
     },
     "files": [
         "tshell-tests.ts",
-        "qio-tests.ts"
+        "qio-tests.ts",
+        "kstore-tests.ts"
     ]
 }
