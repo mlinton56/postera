@@ -8,6 +8,40 @@
  *
 VERSION 0.1.0
 README
+## slogger
+
+The slogger module defines a simple interface that is common to many
+logging libraries, especially winston. The primary use is to allow
+modules to do simple logging without knowing about the underlying implementation.
+
+Normally, one module will define the logger implementation.
+
+    import * as slogger from 'postera/slogger'
+
+    slogger.defaultLogger.impl = new winston.Logger(...)
+
+Other modules simply import and use the exported logger object:
+
+    import logger from 'postera/slogger'
+
+    logger.info('This is an info log')
+
+In this example, the logger.info call will info method on
+the Winston logger object. The slogger implementation uses a proxy object
+to implement this forwarding mechanism, which means there is no ordering
+requirement--it is not necessary to assign defaultLogger.impl before
+other modules import the logger object (of course the assignment must occur
+before the other modules execute code using the logger object).
+
+The interface defines log, error, warn, info, debug, and verbose methods.
+For convenience, a caller also may pass an Error object
+for the message parameter. By default the proxy uses the Error stack property
+as the message. This default may be overridden:
+
+    logger.errStackFlag = false
+
+If this flag is false then the proxy use the Error message property
+as the message.
 EOF
  */
 

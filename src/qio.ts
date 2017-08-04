@@ -8,6 +8,10 @@
  *
 VERSION 0.1.0
 README
+## qio
+
+The qio module provides a simple interface to message queueing, currently
+implemented using the amqplib callback API.
 EOF
  */
 
