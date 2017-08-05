@@ -5,7 +5,8 @@
         "@types/node": "^7.0.22",
         "amqp": "~0.2.4",
         "amqplib": "~0.4.1",
-        "postera": "file:../build/postera",
-        "redis": "^2.7.1"
+        "postera": "^0.1.2",
+        "redis": "^2.7.1",
+        "tshell": "^0.1.0"
     }
 }
