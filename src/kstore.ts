@@ -185,13 +185,18 @@ export function redisStore(config?): KeyValueStore {
 }
 
 
+export class Subscription {
+    client: any
+    topics: Set<string>
+}
+
 export type Result = (err, res) => void
 
 export class RedisStore implements KeyValueStore, MessageBroker {
 
     impl: any
     config: any
-    private subscriptions: Map<Subscriber,any>
+    private subscriptions: Map<Subscriber,Subscription>
 
 
     static initial(config?): RedisStore {
@@ -374,46 +379,81 @@ export class RedisStore implements KeyValueStore, MessageBroker {
     subscriberAdd(subscriber: Subscriber, ...topics: string[]): Promise<void> {
         let s
         if (!this.subscriptions) {
-            this.subscriptions = new Map<Subscriber,any>()
-            s = redis.createClient(this.config)
-            this.subscriptions.set(subscriber, s)
+            this.subscriptions = new Map<Subscriber,Subscription>()
+            s = this.addSubscription(subscriber, topics)
         } else {
             s = this.subscriptions.get(subscriber)
             if (!s) {
-                s = redis.createClient(this.config)
-                this.subscriptions.set(subscriber, s)
+                s = this.addSubscription(subscriber, topics)
+            } else {
+                for (let t of topics) {
+                    s.topics.add(t)
+                }
             }
         }
 
+        const client = s.client
         return new Promise<void>((resolve, reject) => {
-            s.on('subscribe', (topic, count) => resolve())
-            s.on('message', (topic, message) => {
-                if (subscriber.messageReceived) {
-                    subscriber.messageReceived(topic, message)
-                }
-            })
-            s.subscribe(...topics)
+            client.on('subscribe', (topic, count) => resolve())
+            client.subscribe(...topics)
         })
     }
 
-    subscriberDel(subscriber: Subscriber, ...topics: string[]): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            const s = this.subscriptions.get(subscriber)
-            if (s) {
-                if (topics.length === 0) {
-                    this.subscriptions.delete(subscriber)
-                    s.unsubscribe(voidResult(resolve, reject))
-                } else {
-                    s.unsubscribe(...topics, voidResult(resolve, reject))
-                }
+    private addSubscription(sub: Subscriber, topics: string[]): Subscription {
+        const s = new Subscription()
+        s.client = redis.createClient(this.config)
+        s.topics = new Set<string>()
+        for (let t of topics) {
+            s.topics.add(t)
+        }
+        this.subscriptions.set(sub, s)
+
+        s.client.on('message', (topic, message) => {
+            if (sub.messageReceived && s.topics.has(topic)) {
+                sub.messageReceived(topic, message)
             }
+        })
+
+        return s
+    }
+
+    subscriberDel(subscriber: Subscriber, ...topics: string[]): Promise<void> {
+        const s = this.subscriptions.get(subscriber)
+        if (!s) {
+            return new Promise<void>((resolve, reject) => resolve())
+        }
+
+        if (topics.length === 0) {
+            s.topics.clear()
+        } else {
+            for (let t of topics) {
+                s.topics.delete(t)
+            }
+        }
+
+        const client = s.client
+        if (s.topics.size !== 0) {
+            return new Promise<void>((resolve, reject) =>
+                client.unsubscribe(...topics, voidResult(resolve, reject))
+            )
+        }
+
+        this.subscriptions.delete(subscriber)
+        return new Promise<void>((resolve, reject) => {
+            client.unsubscribe((err, res) => {
+                client.quit()
+                if (err) {
+                    logger.warn(err)
+                }
+                resolve()
+            })
         })
     }
 
     publish(topic: string, message: string): Promise<void> {
-        return new Promise<void>((resolve, reject) =>
+        return new Promise<void>((resolve, reject) => {
             this.impl.publish(topic, message, voidResult(resolve, reject))
-        )
+        })
     }
 
 

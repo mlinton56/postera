@@ -6,19 +6,28 @@
  */
 
 import * as kstore from 'postera/kstore'
-import logger from 'postera/slogger'
+import {defaultLogger as logger, ConfigurableLogger} from 'postera/slogger'
+
+require('source-map-support').install()
 
 export interface BatchInfo {
     user: string
     keys: string[]
 }
 
-const store = kstore.redisStore({host: process.env.REDIS_HOST || 'localhost'})
+let store: kstore.KeyValueStore
 
 process.on('uncaughtException', (err) => logger.error(err))
 process.on('unhandledRejection', (err, promise) => logger.error(err))
 
 async function main() {
+    const clogger = <ConfigurableLogger>(logger.impl)
+    clogger.config = {timeFlag: false, levelFlag: false}
+    clogger.level = 'debug'
+
+    store = kstore.redisStore({host: process.env.REDIS_HOST || 'localhost'})
+
+    await store.valueMod('batchId', 0)
     const batchId = (await store.valueIncr('batchId')).toString()
     logger.info('batchId = ' + batchId)
 
@@ -37,7 +46,38 @@ async function main() {
     await addResult(batchId, 'second', 'This is the second result')
     await status('user', batchId)
 
-    store.impl.quit()
+    const msgbroker = store.broker()
+    const topic = 'messages'
+
+    logger.info('Creating subscriber 1')
+    const subscriber1 = MySubscriber.initial('1')
+    await msgbroker.subscriberAdd(subscriber1, topic)
+
+    logger.info('Creating subscriber 2')
+    const subscriber2 = MySubscriber.initial('2')
+    await msgbroker.subscriberAdd(subscriber2, topic)
+
+    logger.info('Publishing first message')
+    await msgbroker.publish(topic, 'This is the first message')
+    await sleep(1)
+
+    logger.info('Publishing second message')
+    await msgbroker.publish(topic, 'This is the second message')
+    logger.info('Deleting subscriber 1')
+    await msgbroker.subscriberDel(subscriber1)
+    await sleep(1)
+
+    logger.info('Publishing third message')
+    await msgbroker.publish(topic, 'This is the third message')
+    await sleep(1)
+
+    logger.info('Deleting subscriber 2')
+    await msgbroker.subscriberDel(subscriber2)
+
+    logger.info('Publishing fourth message')
+    await msgbroker.publish(topic, 'This is the fourth message')
+
+    store.close()
 }
 
 async function addBatch(batchId: string, user: string, batch) {
@@ -72,6 +112,31 @@ async function status(user: string, b: string) {
     } else {
         logger.info(JSON.stringify(await store.map(b + '/')))
     }
+}
+
+function sleep(sec: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+            resolve()
+        }, Math.round(sec * 1000))
+    })
+}
+
+class MySubscriber implements kstore.Subscriber {
+
+    label: string
+
+    static initial(label: string): MySubscriber {
+        const s = new MySubscriber()
+        s.label = label
+        return s
+    }
+
+
+    messageReceived(topic: string, message: string): void {
+        logger.info(this.label + ': "' + message + '"')
+    }
+
 }
 
 main()
