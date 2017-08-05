@@ -11,12 +11,12 @@ VERSION 0.1.0
 README
 ## kstore
 
-The kstore module provides a simple interface to a shared key-value store and
-an implementation of the interface for Redis. The interface uses promises
+The kstore module provides common methods to access a shared key-value store,
+with an implementation for Redis. The methods are promise-based
 to simplify coding synchronous use cases.
 
-The interface supports associated strings or objects with a string key, as well
-as maps of strings or objects accessed by an item identifier (string).
+The method interfaces support associating strings or objects with a string key,
+as well as maps of strings or objects accessed by an item identifier (string).
 
     import * as kstore from 'postera/kstore'
 
@@ -75,7 +75,7 @@ import logger from './slogger'
 const redis = require('redis')
 
 /**
- * Interface to a shared (potentially remote) key-value store.
+ * Access to a shared (potentially remote) key-value store.
  */
 export interface KeyValueStore {
     /** Implementation, e.g. Redis client object. */
@@ -94,7 +94,7 @@ export interface KeyValueStore {
     valueMod(key: string, value: any): Promise<void>
 
     /** Modify the string value associated with a key. */
-    strValueMod(key: string, value: string): Promise<void>
+    strValueMod(key: string, str: string): Promise<void>
 
     /** Increment an integer associated with a key and return the new value. */
     valueIncr(key: string): Promise<number>
@@ -142,29 +142,69 @@ export interface KeyValueStore {
     strMapItem(key: string, i: string): Promise<string>
 
     /** Modify an item in a string map. */
-    strMapItemMod(key: string, i: string, value: string): Promise<boolean>
+    strMapItemMod(key: string, i: string, str: string): Promise<boolean>
+
+    /**
+     * Return a lightweight message broker, if one is available as
+     * part of the store implementation.
+     */
+    broker(): MessageBroker
 
     /** Close the key-value store, releasing any related resources. */
     close(): void
 }
 
 /**
+ * Lightweight publish/subscribe interface.
+ */
+export interface MessageBroker {
+    /** Add a subscriber. */
+    subscriberAdd(subscriber: Subscriber, ...topics: string[]): Promise<void>
+
+    /** Remove a subscriber. */
+    subscriberDel(subscriber: Subscriber, ...topics: string[]): Promise<void>
+
+    /** Publish a message to subscribers. */
+    publish(topic: string, message: string): Promise<void>
+}
+
+/**
+ * A subscriber implements this interface.
+ */
+export interface Subscriber {
+    messageReceived?(topic: string, message: string)
+}
+
+
+/**
  * Return a store for a Redis server. The configuration must contain
  * a host property specify the server.
  */
-export function redisStore(config): KeyValueStore {
-    const store = new RedisStore()
-    store.impl = redis.createClient(config)
-    logger.info('Redis server is ' + config.host)
-    return store
+export function redisStore(config?): KeyValueStore {
+    return RedisStore.initial(config)
 }
 
 
 export type Result = (err, res) => void
 
-export class RedisStore implements KeyValueStore {
+export class RedisStore implements KeyValueStore, MessageBroker {
 
     impl: any
+    config: any
+    private subscriptions: Map<Subscriber,any>
+
+
+    static initial(config?): RedisStore {
+        const cfg = Object.assign({host: '127.0.0.1'}, config)
+        const impl = redis.createClient(cfg)
+        logger.info('Redis server is ' + cfg.host)
+
+        const store = new RedisStore()
+        store.impl = impl
+        store.config = JSON.parse(JSON.stringify(cfg))
+        return store
+    }
+
 
     value(key: string): Promise<any> {
         return new Promise<any>((resolve, reject) =>
@@ -184,9 +224,9 @@ export class RedisStore implements KeyValueStore {
         )
     }
 
-    strValueMod(key: string, value: string): Promise<void> {
+    strValueMod(key: string, str: string): Promise<void> {
         return new Promise<void>((resolve, reject) =>
-            this.impl.set(key, value, voidResult(resolve, reject))
+            this.impl.set(key, str, voidResult(resolve, reject))
         )
     }
 
@@ -318,13 +358,64 @@ export class RedisStore implements KeyValueStore {
         )
     }
 
-    strMapItemMod(key: string, i: string, value: string): Promise<boolean> {
+    strMapItemMod(key: string, i: string, str: string): Promise<boolean> {
         return new Promise<boolean>((resolve, reject) =>
-            this.impl.hset(key, i, value, (err, res) => 
+            this.impl.hset(key, i, str, (err, res) => 
                 err ? reject(err) : resolve(res == 1)
             )
         )
     }
+
+
+    broker(): MessageBroker {
+        return this
+    }
+
+    subscriberAdd(subscriber: Subscriber, ...topics: string[]): Promise<void> {
+        let s
+        if (!this.subscriptions) {
+            this.subscriptions = new Map<Subscriber,any>()
+            s = redis.createClient(this.config)
+            this.subscriptions.set(subscriber, s)
+        } else {
+            s = this.subscriptions.get(subscriber)
+            if (!s) {
+                s = redis.createClient(this.config)
+                this.subscriptions.set(subscriber, s)
+            }
+        }
+
+        return new Promise<void>((resolve, reject) => {
+            s.on('subscribe', (topic, count) => resolve())
+            s.on('message', (topic, message) => {
+                if (subscriber.messageReceived) {
+                    subscriber.messageReceived(topic, message)
+                }
+            })
+            s.subscribe(...topics)
+        })
+    }
+
+    subscriberDel(subscriber: Subscriber, ...topics: string[]): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const s = this.subscriptions.get(subscriber)
+            if (s) {
+                if (topics.length === 0) {
+                    this.subscriptions.delete(subscriber)
+                    s.unsubscribe(voidResult(resolve, reject))
+                } else {
+                    s.unsubscribe(...topics, voidResult(resolve, reject))
+                }
+            }
+        })
+    }
+
+    publish(topic: string, message: string): Promise<void> {
+        return new Promise<void>((resolve, reject) =>
+            this.impl.publish(topic, message, voidResult(resolve, reject))
+        )
+    }
+
 
     close(): void {
         this.impl.quit()
