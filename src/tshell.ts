@@ -6,7 +6,7 @@
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
  *
-VERSION 0.1.0
+VERSION 0.1.1
 README
 ## tshell
 
@@ -52,13 +52,6 @@ passed as an argument in every call. The _exec_ function allows one to override
 the context when executing a specific command. One can use this function
 to redirect the input or output of the command.
 
-Using a global works well for a single path of execution, but the use of await
-means one should be careful using multiple code blocks that execute commands.
-The _subshell_ function handles nesting. However, in a case where
-there might be parallel command execution, such as executing commands
-in a callback, one must use the _result_ method to ensure the current context
-is properly restored before continuing after a use of await.
-
     // Redirect input or output.
     await exec(cmd(echo, 'hi mom!'), { '>': 'out.txt' })
     await exec(cmd(sort, '-n'), { '<': 'data.txt', '>': 'sorted.txt' })
@@ -70,9 +63,9 @@ is properly restored before continuing after a use of await.
     // status === 1
 
 #### Subshells
-The _subshell_ function returns a special command that calls
-a user-defined async function. This feature is useful to encapsulate
-calls to commands in a different context.
+The _subshell_ function handles sequential nesting by returning
+a special command that calls a user-defined async function.
+This feature is useful to encapsulate calls to commands in a different context.
 
     // Function body as a command.
     async function body() {
@@ -85,6 +78,13 @@ calls to commands in a different context.
         await echo('goodbye')
     }
     await exec(subshell(body), { '>': output })
+
+Using a global works well for a single path of execution, but the use of await
+means one should be careful using multiple code blocks that execute commands.
+If there might be parallel command execution,
+such as executing commands in a callback,
+one must use the _result_ method to ensure the current context
+is properly restored before continuing after a use of await.
 
     // Multiple parallel shell context
     await exec(subshell(async function() {
@@ -296,7 +296,7 @@ const contextSimpleProps = [
 export type ExecArg = string | Context
 type ExecArgs = [string[], Context]
 
-function execArgs(arglist: ExecArg[]): [string[], Context] {
+function execArgs(arglist: ExecArg[]): ExecArgs {
     let args
     let context
 
@@ -406,14 +406,14 @@ export interface Shell {
      * Set the exit status from a shell body. Note it is not sufficient
      * to call this method--one must also return from the body, e.g.,
      *
-     * await subshell(() => {
+     * await exec(subshell(() => {
      *     if (cond) {
      *         shell().exit(1)
      *         return
      *     } else {
      *         // continue to do more
      *     }
-     * })
+     * }))
      */
     exit(code: number): void
 }
@@ -604,27 +604,24 @@ class ShellImpl implements Shell {
         this.jobIdent = jobIdent
 
         const job = new JobInfo()
-        job.shell = this
         job.ident = jobIdent
+        job.shell = this
+        job.context = context ? this.context.clone(context) : this.context
         flatten(prog, args, job)
 
         const p = job.prog
-        if (typeof p === 'string') {
+        switch (typeof p) {
+        case 'string':
             // Create a task spawns a child process.
-            job.context = context ? this.context.clone(context) : this.context
-            return ChildTask.initial(current, <string>p, job)
-        } else if (typeof p === 'function') {
-            // Task runs ShellFunc body.
-            const command = <Cmd>p
-            const body = <ShellFunc>(command.prog)
-            const parent = this
-            const sh = parent.clone(context)
-            job.shell = sh
-            job.context = sh.context
-            return ShellTask.initial(parent, body, job)
-        }
+            return ChildTask.initial(this, <string>p, job)
 
-        throw new Error('Unexpected type ' + (typeof p))
+        case 'function':
+            // Task runs ShellFunc body in new shell.
+            return ShellTask.initial(this, <ShellFunc>((<Cmd>p).prog), job)
+
+        default:
+            throw new Error('Unexpected type ' + (typeof p))
+        }
     }
 
 }
@@ -641,6 +638,7 @@ abstract class CmdTask {
     protected job: JobInfo
     protected context: Context
     protected stdio: (Stream | string)[]
+    protected input: Stream
     protected output: string[]
 
     protected resolveFunc: (result: ExitStatus) => void
@@ -690,15 +688,48 @@ abstract class CmdTask {
         this.redirectInput()
     }
 
+    /**
+     * This code is ugly because it didn't work to pass a readable stream
+     * as stdio[0] to child_process.spawn--appears one must pipe the stream
+     * to child.stdin in that case. Could always pipe but that seems
+     * like overkill for simple redirection, so the approach is to use
+     * an fd if the redirect is a filename and pipe any other object
+     * to child.stdin.
+     */
     private redirectInput(): void {
-        const s = this.istream('<')
-        if (s) {
-            s.on('open', (fd) => {
-                this.stdio[0] = s
-                this.redirectOutput()
-            })
-        } else {
+        const s = this.context['<']
+        if (!s) {
             this.redirectOutput()
+            return
+        }
+
+        switch (typeof s) {
+        case 'string':
+            fs.open(s, 'r', (err, fd) => {
+                if (err) {
+                    this.errorNotify(err)
+                } else {
+                    this.stdio[0] = fd
+                    this.redirectOutput()
+                }
+            })
+            break
+
+        case 'number':
+            this.stdio[0] = s
+            this.redirectOutput()
+            break
+
+        default:
+            if (typeof s.pipe === 'function') {
+                // Assume it is a stream.
+                this.input = s
+                this.stdio[0] = 'pipe'
+                this.redirectOutput()
+            } else {
+                this.errorNotify(new Error('Unrecognized input ' + s))
+            }
+            break
         }
     }
 
@@ -733,15 +764,6 @@ abstract class CmdTask {
         } else {
             this.run()
         }
-    }
-
-    private istream(key: string): Stream {
-        const input = this.context[key]
-        if (typeof input !== 'string') {
-            return input
-        }
-
-        return this.checked(fs.createReadStream(input))
     }
 
     private ostream(a: string, w: string): Stream {
@@ -876,6 +898,10 @@ class ChildTask extends CmdTask {
             detached: context.detachedFlag
         })
 
+        if (this.input) {
+            this.input.pipe(child.stdin)
+        }
+
         // Capture the child process stdout.
         if (output) {
             child.stdout.on('data', (data) => output.push(data))
@@ -908,24 +934,22 @@ class ChildTask extends CmdTask {
  */
 class ShellTask extends CmdTask {
 
-    private parent: ShellImpl
     private func: ShellFunc
 
 
     static initial(sh: ShellImpl, f: ShellFunc, job: JobInfo): ShellTask {
         const task = new ShellTask()
         task.init(sh, job)
-        task.parent = sh
         task.func = f
         return task
     }
 
 
     protected run(): void {
-        current = this.sh
+        current = this.sh.clone(this.context)
         this.func.call(null).then(
-            (none) => this.returnStatus(this.parent, this.sh.status),
-            (err) => this.returnError(this.parent, err)
+            (none) => this.returnStatus(this.sh, this.sh.status),
+            (err) => this.returnError(this.sh, err)
         )
     }
 

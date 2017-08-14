@@ -1,8 +1,9 @@
-import { cmd, exec, output, shell, subshell, ExitError } from 'tshell'
-import { ShellListener, JobInfo, ExitStatus } from 'tshell'
+import {cmd, exec, output, shell, subshell} from './tshell'
+import {ShellListener, JobInfo, ExitStatus, ExitError} from './tshell'
 
 declare function require(m: string): any
 require('source-map-support').install()
+require('process').on('unhandledRejection', (err, p) => console.log(err.stack))
 
 function log(msg: string): void {
     console.log(message(msg))
@@ -51,13 +52,15 @@ class TestListener implements ShellListener {
     await echo2("3")
 
     await exec(mkdir, "tmp")
-    await exec('ls', "-1", "-a", "tmp", { '>': filelist })
+    await exec('ls', "-1", "-a", "tmp", {'>': filelist})
     await exec('cat', filelist)
     await exec('rm', filelist)
     await exec('rmdir', "tmp")
 
-    const out = await output(echo, "hi mom!")
+    const out = await output(echo, "hi mom!", {'<': 'tshell-tests.ts'})
     log('captured "' + out + '"')
+
+    await exec('head', '-1', {'<': 'tshell-tests.ts'})
 
     try {
         await bash("exit 1")

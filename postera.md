@@ -1,3 +1,6 @@
+VERSION 0.1.3
+Modules for developing and connecting software components
+README
 ## postera
 
 The postera package is a collection of the following TypeScript modules:
@@ -16,3 +19,4 @@ Shared logging object
 Run shell commands
 </li>
 </ul>
+EOF
