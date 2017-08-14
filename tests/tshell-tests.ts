@@ -1,5 +1,5 @@
-import {cmd, exec, output, shell, subshell} from './tshell'
-import {ShellListener, JobInfo, ExitStatus, ExitError} from './tshell'
+import {cmd, exec, output, shell, subshell} from 'tshell'
+import {ShellListener, JobInfo, ExitStatus, ExitError} from 'tshell'
 
 declare function require(m: string): any
 require('source-map-support').install()
