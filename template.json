@@ -4,7 +4,8 @@
     "description": "$DESCRIPTION",
     "license": "MIT",
     "files": [
-        "README.md", "LICENSE", $FILES
+        "README.md", "LICENSE",
+        $FILES
     ],
     "main": "$NAME.js",
     "types": "$NAME.d.ts",
@@ -13,7 +14,7 @@
         "url": "https://github.com/mlinton56/postera"
     },
     "engines": {
-        "node": ">=6.10.3"
+        "node": ">=8.3.0"
     },
     "dependencies": {
         "@types/node": "^7.0.22",

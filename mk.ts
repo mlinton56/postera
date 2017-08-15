@@ -83,14 +83,14 @@ async function packAll() {
         await exec('cp', '-f', '-p', dst, path(docdir, m + '.md'))
     }
 
-    const postera = path(top, 'README.md')
-    logInfo('generating ' + postera)
-    await readme('postera', path(top, 'postera.md'), postera)
-    await exec(edit(subst), {'<': postera, '>': path(outdir, 'README.md')})
-
-    const license = path(top, 'LICENSE')
-    logInfo('copying ' + relative('', license))
-    await copyLicense(license, outdir)
+    const src = path(top, 'postera.md')
+    const gitdst = path(top, 'README.md')
+    const pkgdst = path(outdir, 'README.md')
+    await readme('postera', src, gitdst)
+    logInfo('generating ' + relative('', pkgdst))
+    await exec(edit(subst), {'<': gitdst, '>': pkgdst})
+    await genpkg('postera', src, outdir)
+    await copyLicense(path(top, 'LICENSE'), outdir)
 }
 
 async function compile(modules: string[], outdir: string) {
@@ -161,8 +161,44 @@ function mtime(path: string): number {
 }
 
 
-function copyLicense(license: string, outdir: string): ShellPromise {
-    return exec('cp', '-f', '-p', license, outdir + '/')
+async function pack(m: string) {
+    const src = path(srcdir, m + '.ts')
+    const outdir = path(build, m)
+    logInfo('packing ' + relative('', outdir))
+    await compile([m], outdir)
+
+    await genpkg(m, src, outdir)
+    await readme(m, src, path(outdir, 'README.md'))
+    await copyLicense(path(top, 'LICENSE'), outdir)
+}
+
+function readme(m: string, src: string, dst: string): ShellPromise {
+    logInfo('generating ' + relative('', dst))
+    return exec(gendoc(src), {'>': dst})
+}
+
+function gendoc(src: string) : Cmd {
+    return tshell.subshell(async function() {
+        await exec('echo', '<!-- DO NOT EDIT GENERATED CONTENT -->')
+        await exec(edit('1,/README/d', '/EOF/,$d'), {'<': src})
+    })
+}
+
+async function genpkg(m: string, src: string, outdir: string) {
+    const files = await jsfiles(outdir)
+    const ver = (await version(src)) || '0.1.0'
+    const desc = await description(src)
+
+    const pkg = path(outdir, 'package.json')
+    logInfo('generating ' + relative('', pkg))
+    await exec(
+        edit(
+            's/$NAME/' + m + '/',
+            's/$VERSION/' + ver + '/',
+            's/$DESCRIPTION/' + desc + '/',
+            's/$FILES/' + files + '/'
+        ), {'<': path(top, 'template.json'), '>': pkg}
+    )
 }
 
 function version(src: string): Promise<string> {
@@ -180,45 +216,11 @@ function jsfiles(dir: string): Promise<string> {
     )
 }
 
-async function pack(m: string) {
-    const src = path(srcdir, m + '.ts')
-    const outdir = path(build, m)
-    logInfo('packing ' + relative('', outdir))
-    await compile([m], outdir)
-
-    const license = path(top, 'LICENSE')
+function copyLicense(license: string, outdir: string): ShellPromise {
     logInfo('copying ' + relative('', license))
-    await copyLicense(license, outdir)
-
-    const files = await jsfiles(outdir)
-    const ver = (await version(src)) || '0.1.0'
-    const desc = await description(src)
-
-    await readme(m, src, path(outdir, 'README.md'))
-
-    const pkg = path(outdir, 'package.json')
-    logInfo('generating ' + relative('', pkg))
-    await exec(
-        edit(
-            's/$NAME/' + m + '/',
-            's/$VERSION/' + ver + '/',
-            's/$DESCRIPTION/' + desc + '/',
-            's/$FILES/' + files + '/'
-        ), {'<': path(top, 'template.json'), '>': pkg}
-    )
+    return exec('cp', '-f', '-p', license, outdir + '/')
 }
 
-function readme(m: string, src: string, dst: string): ShellPromise {
-    logInfo('generating ' + relative('', dst))
-    return exec(gendoc(src), {'>': dst})
-}
-
-function gendoc(src: string) : Cmd {
-    return tshell.subshell(async function() {
-        await exec('echo', '<!-- DO NOT EDIT GENERATED CONTENT -->')
-        await exec(edit('1,/README/d', '/EOF/,$d'), {'<': src})
-    })
-}
 
 function edit(...cmds: string[]): Cmd {
     const args = []
