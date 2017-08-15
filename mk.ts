@@ -65,6 +65,14 @@ async function packList(argv: string[]) {
 
 const all = ['tshell', 'slogger', 'qio', 'kstore']
 
+const pattern = escape('"doc/')
+const replace = escape('"https://github.com/mlinton56/postera/blob/master/doc/')
+const subst = ['s', pattern, replace, ''].join('/')
+
+function escape(s: string): string {
+    return s.replace(/\//g, '\\/')
+}
+
 async function packAll() {
     const outdir = path(build, 'postera')
     await compile(all, outdir)
@@ -78,7 +86,7 @@ async function packAll() {
     const postera = path(top, 'README.md')
     logInfo('generating ' + postera)
     await readme('postera', path(top, 'postera.md'), postera)
-    await exec('cp', '-f', '-p', postera, path(outdir, 'README.md'))
+    await exec(edit(subst), {'<': postera, '>': path(outdir, 'README.md')})
 
     const license = path(top, 'LICENSE')
     logInfo('copying ' + relative('', license))
