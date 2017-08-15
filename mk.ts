@@ -2,7 +2,7 @@
  * Builds and packs postera modules.
  *
  * Use the "m" node executable to (re)build and run this code.
-
+ *
  * Usage: m [-v] [module ...]
  *
  * Compile and pack each module separately into a build/module subdirectory,
@@ -56,7 +56,7 @@ async function packList(argv: string[]) {
         const i = m.indexOf('.o')
         if (i > 0 && i === m.length - 2) {
             const mm = m.slice(0, -2)
-            await compile(mm, path(srcdir, mm + '.ts'), path(build, mm))
+            await compile([mm], path(build, mm))
         } else {
             await pack(m)
         }
@@ -67,9 +67,9 @@ const all = ['tshell', 'slogger', 'qio', 'kstore']
 
 async function packAll() {
     const outdir = path(build, 'postera')
+    await compile(all, outdir)
     for (let m of all) {
         const src = path(srcdir, m + '.ts')
-        await compile(m, src, outdir)
         const dst = path(outdir, m + '.md')
         await readme(m, src, dst)
         await exec('cp', '-f', '-p', dst, path(docdir, m + '.md'))
@@ -85,7 +85,7 @@ async function packAll() {
     await copyLicense(license, outdir)
 }
 
-async function compile(m: string, src: string, outdir: string) {
+async function compile(modules: string[], outdir: string) {
     if (!fs.existsSync(outdir)) {
         logInfo('initializing ' + outdir)
         await exec('mkdir', '-p', outdir)
@@ -95,22 +95,32 @@ async function compile(m: string, src: string, outdir: string) {
         )
     }
 
-    const dst = path(outdir, m + '.js')
-    const deps = dependencies[m]
-    if (!fs.existsSync(dst) || modified(src, dst, deps)) {
-        logInfo('compiling ' + relative('', src) + ' to ' + relative('', dst))
+    const args = []
+    const info = []
+    for (let m of modules) {
+        const src = path(srcdir, m + '.ts')
+        const dst = path(outdir, m + '.js')
+        const deps = dependencies[m]
+        if (!fs.existsSync(dst) || modified(src, dst, deps)) {
+            args.push(src)
+            info.push(relative('', src))
+
+            mtimes.delete(dst)
+            for (let d of deps) {
+                mtimes.delete(path(outdir, d + '.js'))
+            }
+        }
+    }
+
+    if (args.length) {
+        logInfo('compiling ' + info.join(' '))
         await exec('tsc', '--target', 'es6', '--alwaysStrict', 'true',
             '--baseUrl', srcdir, '--outdir', outdir,
             '--module', 'commonjs', '--removeComments', 'true',
             '--typeRoots', 'node_modules/@types', '--types', 'node',
-            '--declaration', 'true', '--sourceMap', 'true', src,
+            '--declaration', 'true', '--sourceMap', 'true', ...args,
             {dir: build}
         )
-
-        mtimes.delete(dst)
-        for (let d of deps) {
-            mtimes.delete(path(outdir, d + '.js'))
-        }
     }
 }
 
@@ -165,7 +175,8 @@ function jsfiles(dir: string): Promise<string> {
 async function pack(m: string) {
     const src = path(srcdir, m + '.ts')
     const outdir = path(build, m)
-    await compile(m, src, outdir)
+    logInfo('packing ' + relative('', outdir))
+    await compile([m], outdir)
 
     const license = path(top, 'LICENSE')
     logInfo('copying ' + relative('', license))

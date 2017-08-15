@@ -948,7 +948,7 @@ class ShellTask extends CmdTask {
     protected run(): void {
         current = this.sh.clone(this.context)
         this.func.call(null).then(
-            (none) => this.returnStatus(this.sh, this.sh.status),
+            (none) => this.returnStatus(this.sh, current.status),
             (err) => this.returnError(this.sh, err)
         )
     }
