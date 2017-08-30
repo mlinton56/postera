@@ -11,6 +11,7 @@
     },
     "files": [
         "tshell-tests.ts",
+        "notifier-tests.ts",
         "qio-tests.ts",
         "kstore-tests.ts"
     ]

@@ -12,13 +12,17 @@
  */
 
 import * as tshell from './src/tshell'
+
+require('source-map-support').install()
+
 type Cmd = tshell.Cmd
 type ExecArg = tshell.ExecArg
 type Program = tshell.Program
 type ShellPromise = tshell.ShellPromise
 
 const fs = require('fs')
-const relative = require('path').relative
+const nodepath = require('path')
+const relative = nodepath.relative
 
 let verbose = false
 let top: string
@@ -31,9 +35,13 @@ const sed = tshell.cmd('sed')
 
 const dependencies = {
     kstore: ['slogger'],
-    qio: ['slogger'],
+    nodereqm: [],
+    notifier: [],
+    qio: ['notifier', 'slogger'],
+    reqm: ['notifier'],
     tshell: [],
-    slogger: []
+    slogger: [],
+    webreqm: []
 }
 
 export function main(dir: string, argv: string[]): void {
@@ -63,7 +71,11 @@ async function packList(argv: string[]) {
     }
 }
 
-const all = ['tshell', 'slogger', 'qio', 'kstore']
+const externalModules = [
+    'tshell', 'slogger', 'notifier', 'qio', 'kstore', 'reqm'
+]
+
+const internalModules = [ 'nodereqm', 'webreqm' ]
 
 const pattern = escape('"doc/')
 const replace = escape('"https://github.com/mlinton56/postera/blob/master/doc/')
@@ -75,20 +87,25 @@ function escape(s: string): string {
 
 async function packAll() {
     const outdir = path(build, 'postera')
-    await compile(all, outdir)
-    for (let m of all) {
+    await compile(externalModules.concat(internalModules), outdir)
+    for (let m of externalModules) {
         const src = path(srcdir, m + '.ts')
         const dst = path(outdir, m + '.md')
-        await readme(m, src, dst)
-        await exec('cp', '-f', '-p', dst, path(docdir, m + '.md'))
+        if (modified(src, dst)) {
+            await readme(src, dst)
+            await exec('cp', '-f', '-p', dst, path(docdir, m + '.md'))
+        }
     }
 
     const src = path(top, 'postera.md')
     const gitdst = path(top, 'README.md')
     const pkgdst = path(outdir, 'README.md')
-    await readme('postera', src, gitdst)
-    logInfo('generating ' + relative('', pkgdst))
-    await exec(edit(subst), {'<': gitdst, '>': pkgdst})
+    await readme(src, gitdst)
+    if (modified(gitdst, pkgdst)) {
+        logInfo('generating ' + relative('', pkgdst))
+        await exec(edit(subst), {'<': gitdst, '>': pkgdst})
+    }
+
     await genpkg('postera', src, outdir)
     await copyLicense(path(top, 'LICENSE'), outdir)
 }
@@ -132,15 +149,21 @@ async function compile(modules: string[], outdir: string) {
     }
 }
 
-function modified(src: string, dst: string, deps: string[]): boolean {
+function modified(src: string, dst: string, deps?: string[]): boolean {
+    if (!fs.existsSync(dst)) {
+        return true
+    }
+
     const jstime = mtime(dst)
     if (mtime(src) > jstime) {
         return true
     }
 
-    for (let d of deps) {
-        if (mtime(path(srcdir, d + '.ts')) > jstime) {
-            return true
+    if (deps) {
+        for (let d of deps) {
+            if (mtime(path(srcdir, d + '.ts')) > jstime) {
+                return true
+            }
         }
     }
 
@@ -168,13 +191,15 @@ async function pack(m: string) {
     await compile([m], outdir)
 
     await genpkg(m, src, outdir)
-    await readme(m, src, path(outdir, 'README.md'))
+    await readme(src, path(outdir, 'README.md'))
     await copyLicense(path(top, 'LICENSE'), outdir)
 }
 
-function readme(m: string, src: string, dst: string): ShellPromise {
-    logInfo('generating ' + relative('', dst))
-    return exec(gendoc(src), {'>': dst})
+async function readme(src: string, dst: string) {
+    if (modified(src, dst)) {
+        logInfo('generating ' + relative('', dst))
+        await exec(gendoc(src), {'>': dst})
+    }
 }
 
 function gendoc(src: string) : Cmd {
@@ -216,9 +241,11 @@ function jsfiles(dir: string): Promise<string> {
     )
 }
 
-function copyLicense(license: string, outdir: string): ShellPromise {
-    logInfo('copying ' + relative('', license))
-    return exec('cp', '-f', '-p', license, outdir + '/')
+async function copyLicense(license: string, outdir: string) {
+    if (modified(license, outdir + '/' + nodepath.basename(license))) {
+        logInfo('copying ' + relative('', license))
+        await exec('cp', '-f', '-p', license, outdir + '/')
+    }
 }
 
 

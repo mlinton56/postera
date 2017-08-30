@@ -15,6 +15,7 @@ implemented using the amqplib callback API.
 EOF
  */
 
+import Notifier from './notifier'
 import logger from './slogger'
 
 const amqp = require('amqplib/callback_api')
@@ -67,82 +68,6 @@ export interface ReceiveOptions {
 }
 
 
-/**
- * Base class for posting notifications to listeners.
- */
-export class Notifier<T> {
-
-    protected listeners: T[] = []
-
-    /**
-     * Add a listener and return it.
-     */
-    listenerAdd(listener: T): T {
-        this.listeners.push(listener)
-
-        if (this.listeners.length === 1) {
-            this.listeningStarted()
-        }
-
-        return listener
-    }
-
-    /**
-     * Remove a listener, returning the removed listener or null
-     * if there was none.
-     */
-    listenerDel(listener: T): T {
-        const listeners = this.listeners
-        for (let i = 0; i < listeners.length; ++i) {
-            if (listeners[i] === listener) {
-                listeners.splice(i, 1)
-
-                if (listeners.length === 0) {
-                    this.listeningStopped()
-                }
-
-                return listener
-            }
-        }
-
-        return null
-    }
-
-    /**
-     * Remove all the listeners.
-     */
-    listenerDelAll(): void {
-        if (this.listeners.length > 0) {
-            this.listeners = []
-            this.listeningStopped()
-        }
-    }
-
-    /**
-     * Post a notification to all listeners. Notification should specify
-     * a method on T, and args should match the method parameters.
-     * If the listener does not implement the method then ignore
-     * the notification.
-     */
-    protected post(notification: string, ...args: any[]): void {
-        for (let listener of this.listeners) {
-            const r = listener[notification]
-            if (r) {
-                r.apply(listener, args)
-            }
-        }
-    }
-
-    protected listeningStarted(): void {
-        // Default is to do nothing.
-    }
-
-    protected listeningStopped(): void {
-        // Default is to do nothing.
-    }
-
-}
-
 export interface ChannelListener {
     opened?(channel: Channel): void
     closed?(channel: Channel): void
@@ -191,7 +116,7 @@ export class Channel
         channel.options = options
         channel.connectionVar = connection
         channel.ch = null
-        channel.listeners = []
+        channel.listenersVar = []
         connection.channelAdd(channel)
         return channel
     }
@@ -487,7 +412,7 @@ export class Connection extends Notifier<ConnectionListener> {
                 this.post('disconnected', this)
                 this.conn = null
 
-                if (this.listeners.length > 0) {
+                if (this.listenersVar.length > 0) {
                     this.listeningStarted()
                 }
             })
