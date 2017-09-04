@@ -4,7 +4,7 @@
 
 import * as reqm from './reqm'
 
-class WebRequestManager extends reqm.RequestManager {
+export default class WebRequestManager extends reqm.RequestManager {
 
     newInfo(): reqm.RequestInfo {
         return new WebRequestInfo()

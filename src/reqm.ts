@@ -15,7 +15,8 @@ of a RequestInfo instance. This approach allows one to use await
 to block until the request completes. Requests specify options
 with a URL string or an object that conforms to the RequestOptions interface.
 
-    import reqm from 'postera/reqm'
+    import defaultManager from 'postera/reqm'
+    const reqm = defaultManager()
 
     let r = await reqm.get('http://duckduckgo.com')
     console.log(r.result)
@@ -363,7 +364,7 @@ export abstract class RequestInfo {
         return this.responseBodyVar
     }
     set responseBody(body) {
-        this.responseBody = body
+        this.responseBodyVar = body
         this.resultVar = undefined
     }
 
@@ -551,7 +552,8 @@ export function manager(impl: string): RequestManager {
     let m = implMap.get(impl)
 
     if (!m) {
-        m = require(impl + '.js')['default']()
+        const cl = require(impl + '.js')['default']
+        m = new cl()
         implMap[impl] = m
     }
 
@@ -564,9 +566,9 @@ export default function defaultManager(): RequestManager {
     if (!defaultManagerVar) {
         let impl
         if (typeof window !== 'undefined') {
-            impl = './webreq.ts'
+            impl = './webreqm'
         } else if (typeof module !== 'undefined' && module.exports != null) {
-            impl = './nodereq.ts'
+            impl = './nodereqm'
         } else {
             throw new Error('Unrecognized RequestManager environment')
         }

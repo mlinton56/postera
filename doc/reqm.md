@@ -6,7 +6,8 @@ of a RequestInfo instance. This approach allows one to use await
 to block until the request completes. Requests specify options
 with a URL string or an object that conforms to the RequestOptions interface.
 
-    import reqm from 'postera/reqm'
+    import defaultManager from 'postera/reqm'
+    const reqm = defaultManager()
 
     let r = await reqm.get('http://duckduckgo.com')
     console.log(r.result)

@@ -6,16 +6,16 @@ import * as reqm from './reqm'
 
 const nodeUrl = require('url')
 const nodeHttp = require('http')
-const nodeProto = {'http': require('http'), 'https': require('https')}
+const nodeProto = {'http:': require('http'), 'https:': require('https')}
 
-class NodeRequestManager extends reqm.RequestManager {
+export default class NodeRequestManager extends reqm.RequestManager {
 
     newInfo(): reqm.RequestInfo {
         return new NodeRequestInfo()
     }
 
     optionsForUrl(url: string): reqm.RequestOptions {
-        const u = nodeUrl.parse()
+        const u = nodeUrl.parse(url)
         return {
             protocol: u.protocol,
             hostname: u.hostname,
@@ -105,12 +105,12 @@ class NodeRequestInfo extends reqm.RequestInfo {
 
 }
 
-const zlib = require("zlib")
+const zlib = require('zlib')
 
 function content(headers: string[], buffers: Buffer[]): string {
     var buf = Buffer.concat(buffers);
 
-    const encoding = headers["content-encoding"];
+    const encoding = headers['content-encoding'];
     if (encoding) {
         switch (encoding.toLowerCase()) {
         case 'gzip':
