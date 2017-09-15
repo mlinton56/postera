@@ -75,15 +75,8 @@ export default class WebRequestManager extends reqm.RequestManager {
                 reject(new reqm.HttpResponseError(err))
             }, false)
 
-            const body = r.requestBody
-            if (body) {
-                if (typeof body === 'function') {
-                    const writer = StringWriter.initial()
-                    body(writer)
-                    req.send(writer.buf)
-                } else {
-                    req.send(body)
-                }
+            if (r.requestBody) {
+                req.send(r.requestBody)
             } else {
                 req.send()
             }
@@ -114,32 +107,6 @@ class WebRequestInfo extends reqm.RequestInfo {
 
     get statusText() {
         return this.response.statusText
-    }
-
-}
-
-class StringWriter {
-
-    private bufVar: string
-
-
-    static initial(): StringWriter {
-        const writer = new StringWriter()
-        writer.bufVar = ''
-        return writer
-    }
-
-
-    get buf() {
-        return this.bufVar
-    }
-
-    set buf(str) {
-        this.bufVar = str
-    }
-
-    write(str): void {
-        this.bufVar += str
     }
 
 }

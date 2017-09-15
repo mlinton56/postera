@@ -16,6 +16,8 @@ export default class NodeRequestManager extends reqm.RequestManager {
 
     optionsForUrl(url: string): reqm.RequestOptions {
         const u = nodeUrl.parse(url)
+
+        // Node options use 'path' instead of 'pathname' so we assign both here.
         return {
             protocol: u.protocol,
             hostname: u.hostname,
@@ -27,10 +29,10 @@ export default class NodeRequestManager extends reqm.RequestManager {
     }
 
     send(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
-        const options = r.options
         return new Promise<reqm.RequestInfo>((resolve, reject) => {
-            const http = nodeProto[options.protocol]
-            const req = http.request(options, (response) => {
+            const opts: any = Object.assign({}, r.options)
+            opts.path = r.path
+            const req = nodeProto[opts.protocol].request(opts, (response) => {
                 this.postNotification('requestSent', r)
                 r.response = response;
 

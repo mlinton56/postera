@@ -1,28 +1,30 @@
 ## reqm
 
 The reqm module provides an interface to make HTTP requests in either
-Node.js or browser environment that return a promise
+Node.js or a browser environment that return a promise
 of a RequestInfo instance. This approach allows one to use await
 to block until the request completes. Requests specify options
 with a URL string or an object that conforms to the RequestOptions interface.
+The default object in the reqm module is a RequestManager instance
+specific to the execution environment (Node.js or web browser). This object
+contains a default set of request options that the request argument overrides.
+Options may be specified individually or together in a url option.
 
     import defaultManager from 'postera/reqm'
     const reqm = defaultManager()
 
-    let r = await reqm.get('http://duckduckgo.com')
+    reqm.defaultOptions.protocol = 'https'
+    reqm.defaultOptions.hostname = 'httpbin.org'
+    reqm.defaultOptions.headers = {'authorization': accessToken}
+    let r = await reqm.get({pathname: '/html'})
+
+    reqm.defaultOptions.url = 'https://httpbin.org'
+
+    r = await reqm.get('/html')
     console.log(r.result)
 
-    r = await reqm.post({url: 'https://duckduckgo.com/?q=foo&t=hw&ia=web'})
-
-The default object in the reqm module is a RequestManager instance
-specific to the execution environment (Node.js or web browser). This object
-contains a default set of request options that the request argument overrides.
-
-    reqm.defaultOptions.protocol = 'https'
-    reqm.defaultOptions.hostname = 'myhost.com'
-    reqm.defaultOptions.headers = {'authorization': accessToken}
-    r = await reqm.get({pathname: '/a'})
-    r = await reqm.get({pathname: '/b'})
+    r = await reqm.post('/post', {name: 'example', {x: 3, y: 4}})
+    console.log(r.result.data)
 
 The return value from a request is an instance of RequestInfo, which provides
 access to the request options (using the properties protocol, method, headers,

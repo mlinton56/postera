@@ -10,28 +10,30 @@ README
 ## reqm
 
 The reqm module provides an interface to make HTTP requests in either
-Node.js or browser environment that return a promise
+Node.js or a browser environment that return a promise
 of a RequestInfo instance. This approach allows one to use await
 to block until the request completes. Requests specify options
 with a URL string or an object that conforms to the RequestOptions interface.
+The default object in the reqm module is a RequestManager instance
+specific to the execution environment (Node.js or web browser). This object
+contains a default set of request options that the request argument overrides.
+Options may be specified individually or together in a url option.
 
     import defaultManager from 'postera/reqm'
     const reqm = defaultManager()
 
-    let r = await reqm.get('http://duckduckgo.com')
+    reqm.defaultOptions.protocol = 'https'
+    reqm.defaultOptions.hostname = 'httpbin.org'
+    reqm.defaultOptions.headers = {'authorization': accessToken}
+    let r = await reqm.get({pathname: '/html'})
+
+    reqm.defaultOptions.url = 'https://httpbin.org'
+
+    r = await reqm.get('/html')
     console.log(r.result)
 
-    r = await reqm.post({url: 'https://duckduckgo.com/?q=foo&t=hw&ia=web'})
-
-The default object in the reqm module is a RequestManager instance
-specific to the execution environment (Node.js or web browser). This object
-contains a default set of request options that the request argument overrides.
-
-    reqm.defaultOptions.protocol = 'https'
-    reqm.defaultOptions.hostname = 'myhost.com'
-    reqm.defaultOptions.headers = {'authorization': accessToken}
-    r = await reqm.get({pathname: '/a'})
-    r = await reqm.get({pathname: '/b'})
+    r = await reqm.post('/post', {name: 'example', {x: 3, y: 4}})
+    console.log(r.result.data)
 
 The return value from a request is an instance of RequestInfo, which provides
 access to the request options (using the properties protocol, method, headers,
@@ -112,7 +114,7 @@ export type RequestArg = string | RequestOptions
  */
 export abstract class RequestManager extends Notifier<RequestListener> {
 
-    protected defaultOptionsVar: RequestOptions
+    protected defaultOptionsVar: RequestOptions = {}
     get defaultOptions() {
         return this.defaultOptionsVar
     }
@@ -200,9 +202,23 @@ export abstract class RequestManager extends Notifier<RequestListener> {
                 r.requestBody = JSON.stringify(body)
                 r.headerMod('content-type', mimeTypes.json)
             } else {
-                r.requestBody = body
+                // TODO: File uploads, multipart, chunked transfers
                 r.headerMod('content-type', type)
+                switch (typeof body) {
+                case 'string':
+                    r.requestBody = body
+                    break
+
+                case 'function':
+                    r.requestBody = StringWriter.initial(body).buf
+                    break
+
+                default:
+                    throw new Error('Unsupported body type ' + (typeof body))
+                }
             }
+
+            r.headerMod('content-length', r.requestBody.length)
         }
 
         return r
@@ -216,12 +232,12 @@ export abstract class RequestManager extends Notifier<RequestListener> {
         const opts = Object.assign({}, this.defaultOptionsVar)
 
         if (opts.url) {
-            Object.assign(opts, this.optionsForUrl(opts.url))
+            Object.assign(opts, optionsForUrl(this, opts.url))
             delete opts.url
         }
 
         if (typeof arg === 'string') {
-            Object.assign(opts, this.optionsForUrl(<string>arg))
+            Object.assign(opts, optionsForUrl(this, <string>arg))
         } else if (arg) {
             const argOpts = <RequestOptions>arg
             const headers = opts.headers
@@ -230,7 +246,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
                 opts.headers = Object.assign({}, headers, opts.headers)
             }
             if (argOpts.url) {
-                Object.assign(opts, this.optionsForUrl(argOpts.url))
+                Object.assign(opts, optionsForUrl(this, argOpts.url))
                 delete opts.url
             }
         }
@@ -244,7 +260,9 @@ export abstract class RequestManager extends Notifier<RequestListener> {
 
     /**
      * Subclasses implement the method to convert a URL string to a
-     * corresponding options object.
+     * corresponding options object. Note that in this module
+     * we use the module function optionsForUrl to remove null properties
+     * from the options returned by the subclass method.
      */
     abstract optionsForUrl(url: string): RequestOptions
 
@@ -266,6 +284,22 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     protected postNotification = super.post
 
 }
+
+/**
+ * Return the options for the given url with the null options deleted
+ * so that Object.assign will not copy them.
+ */
+function optionsForUrl(m: RequestManager, url: string): RequestOptions {
+    const options = m.optionsForUrl(url)
+    for (const prop in options) {
+        if (options.hasOwnProperty(prop) && options[prop] === null) {
+            delete options[prop]
+        }
+    }
+
+    return options
+}
+
 
 /**
  * Information about a request, including its response.
@@ -295,9 +329,9 @@ export abstract class RequestInfo {
     get search() { return this.options.search }
     get hash() { return this.options.hash }
 
-    get path(): string {
+    get path() {
         const options = this.options
-        return options.pathname + options.search + options.hash
+        return options.pathname + (options.search || '') + (options.hash || '')
     }
 
     get timeout() { return this.options.timeout }
@@ -424,7 +458,7 @@ export abstract class RequestInfo {
         const options = this.options
         const path = this.path
         const fullpath = path[0] === '/' ? path : ('/' + path)
-        return options.method + ' ' + options.hostname + fullpath
+        return options.method + ' ' + options.hostname + ' ' + fullpath
     }
 
     /**
@@ -468,6 +502,37 @@ export abstract class RequestInfo {
     }
 
 }
+
+class StringWriter {
+
+    private bufVar: string = ''
+
+
+    static initial(f?: (out: StringWriter) => void): StringWriter {
+        const writer = new StringWriter()
+
+        if (f) {
+            f(writer)
+        }
+
+        return writer
+    }
+
+
+    get buf() {
+        return this.bufVar
+    }
+
+    set buf(str) {
+        this.bufVar = str
+    }
+
+    write(str): void {
+        this.bufVar += str
+    }
+
+}
+
 
 /**
  * Convenience class for managing cookies.
@@ -586,7 +651,7 @@ export default function defaultManager(): RequestManager {
  * TODO: Handle relative locations and redirection loops.
  */
 export function defaultRedirector(r: RequestInfo, resolve, reject): void {
-    const opts = this.optionsForUrl(r.responseHeader('location'))
+    const opts = optionsForUrl(this, r.responseHeader('location'))
     this.request(opts).then((r) => resolve(r), (err) => reject(err))
 }
 
@@ -634,7 +699,7 @@ export class HttpStatusException extends HttpException {
 
     private infoVar: RequestInfo
     get info() {
-        return this.info
+        return this.infoVar
     }
 
     get code() {
