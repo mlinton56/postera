@@ -23,15 +23,20 @@ finished [8] rmdir tmp
 started [9] echo "hi mom!"
 finished [9] echo "hi mom!"
 test 3: captured "hi mom!"
-started [10] bash -c "exit 1"
-failed [10] bash -c "exit 1"
-test 4: ExitError 1
+started [10] head -1
+import {cmd, exec, output, shell, subshell} from 'tshell'
+finished [10] head -1
 started [11] bash -c "exit 1"
-finished [11] bash -c "exit 1"
+failed [11] bash -c "exit 1"
+test 4: ExitError 1
+started [12] bash -c "exit 1"
+finished [12] bash -c "exit 1"
 test 5: status 1
-started [12] ()
-started [13] bash -c "exit 2"
-finished [13] bash -c "exit 2"
+started [13] ()
+started [1] bash -c "exit 2"
+started [1] bash -c "exit 2"
+finished [1] bash -c "exit 2"
+finished [1] bash -c "exit 2"
 test 6: nested status: 2
 test 7: status: 3
-finished [12] ()
+finished [13] ()
