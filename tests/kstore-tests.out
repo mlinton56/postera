@@ -1,0 +1,25 @@
+Redis server is localhost
+batchId = 1
+added batch 1
+getting status of batch 100 for user
+Unknown batch 100
+getting status of batch 1 for user
+{"first":"This is the first result","second":"This is the second result"}
+getting status of batch 1 for other
+Wrong user
+getting status of batch 1 for user
+{"first":"This is the first result","second":"This is the second result"}
+getting status of batch 1 for user
+{"first":"This is the first result","second":"This is the second result"}
+Creating subscriber 1
+Creating subscriber 2
+Publishing first message
+2: "This is the first message"
+1: "This is the first message"
+Publishing second message
+Deleting subscriber 1
+2: "This is the second message"
+Publishing third message
+2: "This is the third message"
+Deleting subscriber 2
+Publishing fourth message
