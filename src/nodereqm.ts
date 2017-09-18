@@ -102,7 +102,7 @@ class NodeRequestInfo extends reqm.RequestInfo {
     }
 
     get statusText() {
-        return nodeProto['http'].STATUS_CODES[this.response.statusCode];
+        return nodeProto['http:'].STATUS_CODES[this.response.statusCode];
     }
 
 }

@@ -627,7 +627,7 @@ export function manager(impl: string): RequestManager {
 
 let defaultManagerVar: RequestManager
 
-export default function defaultManager(): RequestManager {
+export function defaultManager(): RequestManager {
     if (!defaultManagerVar) {
         let impl
         if (typeof window !== 'undefined') {
@@ -644,6 +644,8 @@ export default function defaultManager(): RequestManager {
 
     return defaultManagerVar
 }
+
+export default defaultManager
 
 /**
  * Default redirection is to retry the request with the new location.
