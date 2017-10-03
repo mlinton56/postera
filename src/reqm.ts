@@ -79,6 +79,7 @@ export interface RequestListener {
     requestRedirected?(r: RequestInfo): void
 
     /** Status 4xx or 5xx */
+    requestUnauthenticated?(r: RequestInfo): void
     requestFailed?(r: RequestInfo): void
 
 
@@ -105,7 +106,35 @@ export interface RequestOptions {
     timeout?: number
 }
 
-export type RequestArg = string | RequestOptions
+/**
+ * Return a RequestOptions object from an implementation-dependent URL object,
+ * which should only contain RequestObjects fields excluding url.
+ * The important feature here is that we do not copy null values
+ * from the URL object so we can can the desired result using the result
+ * with Object.assign.
+ */
+export function urlOptions<T extends object>(urlObject: T): RequestOptions {
+    const options = {}
+
+    // Ugly cast here to allow keyof T as a RequestOptions index.
+    for (const prop in <any>urlObject) {
+        if (urlObject.hasOwnProperty(prop)) {
+            const value = urlObject[prop]
+            if (value != null) {
+                options[prop] = value
+            }
+        }
+    }
+
+    return options
+}
+
+
+/**
+ * RequestArg effectively provides overloading for specifying request options
+ * with a url string, an options object, or an existing RequestInfo.
+ */
+export type RequestArg = string | RequestOptions | RequestInfo
 
 /**
  * RequestManager contains default options and methods to create requests.
@@ -134,38 +163,62 @@ export abstract class RequestManager extends Notifier<RequestListener> {
 
 
     /**
-     * Send a request with the given options overriding the default ones.
+     * Send a request for the given argument and return a promise
+     * fulfilled when the response is complete.
      */
     request(arg?: RequestArg): Promise<RequestInfo> {
-        return this.send(this.infoForArg(arg))
+        return this.requestForInfo(this.infoForArg(arg))
     }
+
+    /**
+     * Send a request using the given URL string and return a promise
+     * fulfilled when the response is complete.
+     */
+    requestForUrl(url: string): Promise<RequestInfo> {
+        return this.requestForInfo(this.infoForUrl(url))
+    }
+
+    /**
+     * Send a request using the given options and return a promise
+     * fulfilled when the response is complete.
+     */
+    requestForOptions(options: RequestOptions): Promise<RequestInfo> {
+        return this.requestForInfo(this.infoForOptions(options))
+    }
+
+    /**
+     * Send a request using the given options and return a promise
+     * fulfilled when the response is complete.
+     */
+    abstract requestForInfo(r: RequestInfo): Promise<RequestInfo>
+
 
     /**
      * Get content from a resource specified by a URL or options.
      */
     get(arg: RequestArg): Promise<RequestInfo> {
-        return this.send(this.info('GET', arg))
+        return this.requestForInfo(this.info('GET', arg))
     }
 
     /**
      * Put content to a resource.
      */
     put(arg: RequestArg, body, type?: string): Promise<RequestInfo> {
-        return this.send(this.info('PUT', arg, body, type))
+        return this.requestForInfo(this.info('PUT', arg, body, type))
     }
 
     /**
      * Post content to a resource.
      */
     post(arg: RequestArg, body, type?: string): Promise<RequestInfo> {
-        return this.send(this.info('POST', arg, body, type))
+        return this.requestForInfo(this.info('POST', arg, body, type))
     }
 
     /**
      * Patch content to a resource.
      */
     patch(arg: RequestArg, body, type?: string): Promise<RequestInfo> {
-        return this.send(this.info('PATCH', arg, body, type))
+        return this.requestForInfo(this.info('PATCH', arg, body, type))
     }
 
     /**
@@ -179,14 +232,14 @@ export abstract class RequestManager extends Notifier<RequestListener> {
             r.options.search = '?' + params.join('&')
         }
 
-        return this.send(r)
+        return this.requestForInfo(r)
     }
 
     /**
      * Delete a resource.
      */
     del(arg: RequestArg, body?, type?: string): Promise<RequestInfo> {
-        return this.send(this.info('DELETE', arg, body, type))
+        return this.requestForInfo(this.info('DELETE', arg, body, type))
     }
 
 
@@ -225,81 +278,118 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     }
 
     /**
-     * Return a new RequestInfo for either a URL (string) or options parameter,
-     * adding to this manager's default options.
+     * Return a RequestInfo for a RequestArg that could be
+     * a URL (string), options (RequestOptions), or a RequestInfo.
      */
     private infoForArg(arg?: RequestArg): RequestInfo {
-        const opts = Object.assign({}, this.defaultOptionsVar)
-
-        if (opts.url) {
-            Object.assign(opts, optionsForUrl(this, opts.url))
-            delete opts.url
+        if (arg instanceof RequestInfo) {
+            return <RequestInfo>arg
         }
 
         if (typeof arg === 'string') {
-            Object.assign(opts, optionsForUrl(this, <string>arg))
-        } else if (arg) {
-            const argOpts = <RequestOptions>arg
-            const headers = opts.headers
-            Object.assign(opts, argOpts)
-            if (headers && opts.headers) {
-                opts.headers = Object.assign({}, headers, opts.headers)
-            }
-            if (argOpts.url) {
-                Object.assign(opts, optionsForUrl(this, argOpts.url))
-                delete opts.url
-            }
+            return this.infoForUrl(<string>arg)
         }
 
+        return this.infoForOptions(<RequestOptions>arg)
+    }
+
+    private infoForUrl(url: string): RequestInfo {
+        const opts = Object.assign({}, this.defaultOptionsVar)
+
+        if (opts.url) {
+            Object.assign(opts, this.optionsForUrl(opts.url))
+            delete opts.url
+        }
+
+        Object.assign(opts, this.optionsForUrl(url))
+
+        return this.initialInfo(opts)
+    }
+
+    private infoForOptions(options: RequestOptions): RequestInfo {
+        const opts = Object.assign({}, this.defaultOptionsVar)
+
+        if (opts.url) {
+            Object.assign(opts, this.optionsForUrl(opts.url))
+            delete opts.url
+        }
+
+        const headers = opts.headers
+        Object.assign(opts, options)
+        if (headers && options.headers) {
+            opts.headers = Object.assign({}, headers, options.headers)
+        }
+        if (options.url) {
+            Object.assign(opts, this.optionsForUrl(options.url))
+        }
+
+        return this.initialInfo(opts)
+    }
+
+    /**
+     * Return a RequestInfo initialized with the given options.
+     */
+    private initialInfo(options: RequestOptions): RequestInfo {
         const r = this.newInfo()
         r.manager = this
-        r.options = opts
-
+        r.options = options
         return r
     }
 
     /**
      * Subclasses implement the method to convert a URL string to a
-     * corresponding options object. Note that in this module
-     * we use the module function optionsForUrl to remove null properties
-     * from the options returned by the subclass method.
+     * corresponding options object.
      */
     abstract optionsForUrl(url: string): RequestOptions
-
 
     /**
      * Subclasses implement the method to create a new RequestInfo.
      */
     protected abstract newInfo(): RequestInfo
 
-    /**
-     * Platform-specific subclasses implement a method to send a request and
-     * receive a response embedded in the resolved RequestInfo value.
-     */
-    protected abstract send(r: RequestInfo): Promise<RequestInfo>
-
-    /**
-     * Notifier defines a post method but we use that name for the HTTP method.
-     */
-    protected postNotification = super.post
-
-}
-
-/**
- * Return the options for the given url with the null options deleted
- * so that Object.assign will not copy them.
- */
-function optionsForUrl(m: RequestManager, url: string): RequestOptions {
-    const options = m.optionsForUrl(url)
-    for (const prop in options) {
-        if (options.hasOwnProperty(prop) && options[prop] === null) {
-            delete options[prop]
-        }
+    protected handleSent(r: RequestInfo): void {
+        super.post('requestSent', r)
     }
 
-    return options
-}
+    protected handleRequestError(r: RequestInfo, err: Error, reject): void {
+        super.post('requestError', r, err)
+        reject(new HttpRequestError(err))
+    }
 
+    protected handleResponseError(r: RequestInfo, err: Error, reject): void {
+        super.post('responseError', r, err)
+        reject(new HttpResponseError(err))
+    }
+
+    /**
+     * Common implementation logic for handling a complete response.
+     */
+    protected handleResponse(r: RequestInfo, s: number, resolve, reject): void {
+        if (s >= 200 && s < 300) {
+            super.post('requestSucceeded', r)
+            resolve(r)
+            return
+        }
+
+        if (s >= 300 && s < 400) {
+            super.post('requestRedirected', r)
+            if (this.redirector) {
+                this.redirector(r, resolve, reject)
+                return
+            }
+        } else if (s === 401 && this.authorizer) {
+            super.post('requestUnauthenticated', r)
+            if (this.authorizer) {
+                this.authorizer(r, resolve, reject)
+                return
+            }
+        }
+
+        super.post('requestFailed', r)
+        reject(new HttpStatusException(r))
+    }
+
+}
 
 /**
  * Information about a request, including its response.
@@ -653,8 +743,9 @@ export default defaultManager
  * TODO: Handle relative locations and redirection loops.
  */
 export function defaultRedirector(r: RequestInfo, resolve, reject): void {
-    const opts = optionsForUrl(this, r.responseHeader('location'))
-    this.request(opts).then((r) => resolve(r), (err) => reject(err))
+    const m = r.manager
+    Object.assign(r.options, m.optionsForUrl(r.responseHeader('location')))
+    m.requestForInfo(r).then((r) => resolve(r), (err) => reject(err))
 }
 
 /**

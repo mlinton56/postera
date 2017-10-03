@@ -10,6 +10,10 @@ class Listener implements RequestListener {
         console.log('requestSent: ' + r.requestLabel)
     }
 
+    requestRedirected(r: RequestInfo): void {
+        console.log('requestRedirected ' + r.responseHeader('location'))
+    }
+
     requestSucceeded(r: RequestInfo): void {
         console.log('requestSucceeded: ' + r.responseLabel)
     }
@@ -41,6 +45,8 @@ async function main() {
 
         reqm.listenerAdd(new Listener())
         console.log((await reqm.patch('/patch', data)).result.data)
+        // 301 test
+        await reqm.get('http://google.com')
         reqm.listenerDelAll()
 
 

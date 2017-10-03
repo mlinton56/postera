@@ -15,25 +15,14 @@ export default class NodeRequestManager extends reqm.RequestManager {
     }
 
     optionsForUrl(url: string): reqm.RequestOptions {
-        const u = nodeUrl.parse(url)
-
-        // Node options use 'path' instead of 'pathname' so we assign both here.
-        return {
-            protocol: u.protocol,
-            hostname: u.hostname,
-            port: u.port,
-            pathname: u.pathname,
-            search: u.search,
-            hash: u.hash
-        }
+        return reqm.urlOptions(nodeUrl.parse(url))
     }
 
-    send(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
+    requestForInfo(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
         return new Promise<reqm.RequestInfo>((resolve, reject) => {
             const opts: any = Object.assign({}, r.options)
             opts.path = r.path
             const req = nodeProto[opts.protocol].request(opts, (response) => {
-                this.postNotification('requestSent', r)
                 r.response = response;
 
                 const buffers = []
@@ -41,36 +30,17 @@ export default class NodeRequestManager extends reqm.RequestManager {
 
                 response.on('error', (err) => {
                     r.responseBody = content(response.headers, buffers)
-                    this.postNotification('requestError', r, err)
-                    reject(new reqm.HttpRequestError(err))
+                    super.handleResponseError(r, err, reject)
                 })
 
                 response.on('end', () => {
                     r.responseBody = content(response.headers, buffers)
-
-                    const statusCode = response.statusCode;
-                    if (statusCode >= 200 && statusCode < 300) {
-                        this.postNotification('requestSucceeded', r)
-                        resolve(r)
-                    } else if (statusCode >= 300 && statusCode < 400) {
-                        this.postNotification('requestRedirected', r)
-                        if (this.redirector) {
-                            this.redirector(r, resolve, reject)
-                        } else {
-                            reject(new reqm.HttpStatusException(r))
-                        }
-                    } else if (statusCode === 401 && this.authorizer) {
-                        this.authorizer(r, resolve, reject)
-                    } else {
-                        this.postNotification('requestFailed', r)
-                        reject(new reqm.HttpStatusException(r))
-                    }
+                    this.handleResponse(r, response.statusCode, resolve, reject)
                 })
             })
 
             req.on('error', (err) => {
-                this.postNotification('requestError', r, err)
-                reject(new reqm.HttpRequestError(err))
+                super.handleRequestError(r, err, reject)
             })
 
             const body = r.requestBody
@@ -82,6 +52,8 @@ export default class NodeRequestManager extends reqm.RequestManager {
                 }
             }
             req.end()
+
+            super.handleSent(r)
         })
     }
 

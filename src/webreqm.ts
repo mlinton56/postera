@@ -11,18 +11,10 @@ export default class WebRequestManager extends reqm.RequestManager {
     }
 
     optionsForUrl(url: string): reqm.RequestOptions {
-        const u = new URL(url)
-        return {
-            protocol: u.protocol,
-            hostname: u.hostname,
-            port: u.port ? JSON.parse(u.port) : undefined,
-            pathname: u.pathname,
-            search: u.search,
-            hash: u.hash
-        }
+        return reqm.urlOptions(new URL(url))
     }
 
-    send(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
+    requestForInfo(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
         const options = r.options
         const req = new XMLHttpRequest()
         const url = options.protocol + '//' + r.host + r.path
@@ -39,40 +31,22 @@ export default class WebRequestManager extends reqm.RequestManager {
             req.addEventListener('load', (event) => {
                 r.response = req
                 r.responseBody = req.response
-
-                const statusCode = req.status
-                if (statusCode >= 200 && statusCode < 300) {
-                    this.postNotification('requestSucceeded', r)
-                    resolve(r)
-                } else if (statusCode >= 300 && statusCode < 400) {
-                    this.postNotification('requestRedirected', r)
-                    if (this.redirector) {
-                        this.redirector(r, resolve, reject)
-                    } else {
-                        reject(new reqm.HttpStatusException(r))
-                    }
-                } else {
-                    this.postNotification('requestFailed', r)
-                    reject(new reqm.HttpStatusException(r))
-                }
+                this.handleResponse(r, req.status, resolve, reject)
             }, false)
 
             req.addEventListener('error', (event) => {
                 const err = new Error(event.type)
-                this.postNotification('requestError', r, err)
-                reject(new reqm.HttpRequestError(err))
+                super.handleRequestError(r, new Error(event.type), reject)
             }, false)
 
             req.addEventListener('abort', (event) => {
                 const err = new Error(event.type)
-                this.postNotification('responseError', r, err)
-                reject(new reqm.HttpResponseError(err))
+                super.handleResponseError(r, new Error(event.type), reject)
             }, false)
 
             req.addEventListener('timeout', (event) => {
                 const err = new Error(event.type)
-                this.postNotification('responseError', r, err)
-                reject(new reqm.HttpResponseError(err))
+                super.handleResponseError(r, new Error(event.type), reject)
             }, false)
 
             if (r.requestBody) {
@@ -81,7 +55,7 @@ export default class WebRequestManager extends reqm.RequestManager {
                 req.send()
             }
 
-            this.postNotification('requestSent', r)
+            super.handleSent(r)
         })
     }
 

@@ -35,13 +35,13 @@ const sed = tshell.cmd('sed')
 
 const dependencies = {
     kstore: ['slogger'],
-    nodereqm: [],
+    nodereqm: ['reqm'],
     notifier: [],
     qio: ['notifier', 'slogger'],
     reqm: ['notifier'],
     tshell: [],
     slogger: [],
-    webreqm: []
+    webreqm: ['reqm']
 }
 
 export function main(dir: string, argv: string[]): void {
