@@ -45,10 +45,12 @@ async function main() {
 
         reqm.listenerAdd(new Listener())
         console.log((await reqm.patch('/patch', data)).result.data)
-        // 301 test
-        await reqm.get('http://google.com')
-        reqm.listenerDelAll()
 
+        // Redirection tests
+        await reqm.get('http://google.com')
+        await reqm.get('/redirect/5')
+
+        reqm.listenerDelAll()
 
         const options = {pathname: '/headers', headers: {authorization: 'token'}}
         console.log((await reqm.get(options)).result.headers.Authorization)

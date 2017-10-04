@@ -22,4 +22,16 @@ requestSent: GET google.com /
 requestRedirected http://www.google.com/
 requestSent: GET www.google.com /
 requestSucceeded: GET www.google.com / OK
+requestSent: GET httpbin.org /redirect/5
+requestRedirected /relative-redirect/4
+requestSent: GET httpbin.org /relative-redirect/4
+requestRedirected /relative-redirect/3
+requestSent: GET httpbin.org /relative-redirect/3
+requestRedirected /relative-redirect/2
+requestSent: GET httpbin.org /relative-redirect/2
+requestRedirected /relative-redirect/1
+requestSent: GET httpbin.org /relative-redirect/1
+requestRedirected /get
+requestSent: GET httpbin.org /get
+requestSucceeded: GET httpbin.org /get OK
 token

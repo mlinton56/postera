@@ -22,7 +22,7 @@ Options may be specified individually or together in a url option.
     import defaultManager from 'postera/reqm'
     const reqm = defaultManager()
 
-    reqm.defaultOptions.protocol = 'https'
+    reqm.defaultOptions.protocol = 'https:'
     reqm.defaultOptions.hostname = 'httpbin.org'
     reqm.defaultOptions.headers = {'authorization': accessToken}
     let r = await reqm.get({pathname: '/html'})
@@ -333,6 +333,8 @@ export abstract class RequestManager extends Notifier<RequestListener> {
         const r = this.newInfo()
         r.manager = this
         r.options = options
+        r.locationList = null
+        r.locationSet = null
         return r
     }
 
@@ -353,12 +355,12 @@ export abstract class RequestManager extends Notifier<RequestListener> {
 
     protected handleRequestError(r: RequestInfo, err: Error, reject): void {
         super.post('requestError', r, err)
-        reject(new HttpRequestError(err))
+        reject(new HttpRequestError(r, err))
     }
 
     protected handleResponseError(r: RequestInfo, err: Error, reject): void {
         super.post('responseError', r, err)
-        reject(new HttpResponseError(err))
+        reject(new HttpResponseError(r, err))
     }
 
     /**
@@ -401,6 +403,8 @@ export abstract class RequestInfo {
 
     manager: RequestManager
     options: RequestOptions
+    locationSet: Set<string>
+    locationList: string[]
 
     get protocol() { return this.options.protocol }
     get hostname() { return this.options.hostname }
@@ -739,12 +743,34 @@ export default defaultManager
 
 /**
  * Default redirection is to retry the request with the new location.
- *
- * TODO: Handle relative locations and redirection loops.
  */
 export function defaultRedirector(r: RequestInfo, resolve, reject): void {
+    if (r.method !== 'GET') {
+        reject(new HttpStatusException(r))
+        return
+    }
+
+    let s = r.locationSet
+    if (!s) {
+        const orig = r.protocol + '//' + r.host + r.path
+        r.locationList = [orig]
+
+        s = new Set<string>()
+        s.add(orig)
+        r.locationSet = s
+    }
+
+    const loc = r.responseHeader('location')
+    if (s.has(loc)) {
+        reject(new HttpRedirectLoop(r, loc))
+        return
+    }
+
+    r.locationList.push(loc)
+    s.add(loc)
+
     const m = r.manager
-    Object.assign(r.options, m.optionsForUrl(r.responseHeader('location')))
+    Object.assign(r.options, m.optionsForUrl(loc))
     m.requestForInfo(r).then((r) => resolve(r), (err) => reject(err))
 }
 
@@ -754,21 +780,27 @@ export function defaultRedirector(r: RequestInfo, resolve, reject): void {
  */
 export class HttpException extends Error {
 
-    constructor(message: string) {
+    protected infoVar: RequestInfo
+    get info() {
+        return this.infoVar
+    }
+
+    constructor(r: RequestInfo, message: string) {
         super(message)
+        this.infoVar = r
     }
 
 }
 
 export class HttpRequestError extends HttpException {
 
-    private errVar: Error
+    protected errVar: Error
     get err() {
         return this.errVar
     }
 
-    constructor(err: Error) {
-        super(err.message)
+    constructor(r: RequestInfo, err: Error) {
+        super(r, err.message)
         this.errVar = err
     }
 
@@ -776,13 +808,13 @@ export class HttpRequestError extends HttpException {
 
 export class HttpResponseError extends HttpException {
 
-    private errVar: Error
+    protected errVar: Error
     get err() {
         return this.errVar
     }
 
-    constructor(err: Error) {
-        super(err.message)
+    constructor(r: RequestInfo, err: Error) {
+        super(r, err.message)
         this.errVar = err
     }
 
@@ -790,22 +822,32 @@ export class HttpResponseError extends HttpException {
 
 export class HttpStatusException extends HttpException {
 
-    private infoVar: RequestInfo
-    get info() {
-        return this.infoVar
-    }
-
     get code() {
-        return this.info.statusCode
+        return this.infoVar.statusCode
     }
 
 
     constructor(r: RequestInfo) {
-        super('HttpStatusException')
-        this.infoVar = r
+        super(r, 'HttpStatusException')
     }
 
 }
+
+export class HttpRedirectLoop extends HttpException {
+
+    protected locationVar: string
+    get location() {
+        return this.locationVar
+    }
+
+    constructor(r: RequestInfo, loc: string) {
+        super(r, 'HttpRedirectLoop: ' + loc)
+        this.locationVar = loc
+    }
+
+}
+
+
 
 /**
  * MIME types specific to common HTTP-based APIs.

@@ -13,7 +13,7 @@ Options may be specified individually or together in a url option.
     import defaultManager from 'postera/reqm'
     const reqm = defaultManager()
 
-    reqm.defaultOptions.protocol = 'https'
+    reqm.defaultOptions.protocol = 'https:'
     reqm.defaultOptions.hostname = 'httpbin.org'
     reqm.defaultOptions.headers = {'authorization': accessToken}
     let r = await reqm.get({pathname: '/html'})
