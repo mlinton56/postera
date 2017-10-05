@@ -1,4 +1,4 @@
-VERSION 0.2.0
+VERSION 0.2.1
 Modules for developing and connecting software components
 README
 ## postera
@@ -10,9 +10,9 @@ The postera package is a collection of the following TypeScript modules:
 Use a key-value store (e.g., Redis) to share data</li>
 <li><a href="doc/qio.md">qio</a> &mdash;
 Use queues to send and receive messages</li>
-<li><a href="doc/notifier.md">qio</a> &mdash;
+<li><a href="doc/notifier.md">notifier</a> &mdash;
 Base class for posting notifications</li>
-<li><a href="doc/reqm.md">qio</a> &mdash;
+<li><a href="doc/reqm.md">reqm</a> &mdash;
 Perform and track HTTP requests using promises.</li>
 <li><a href="doc/slogger.md">slogger</a> &mdash;
 Shared logging object</li>
