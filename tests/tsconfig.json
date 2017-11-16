@@ -14,6 +14,8 @@
         "notifier-tests.ts",
         "qio-tests.ts",
         "kstore-tests.ts",
-        "reqm-tests.ts"
+        "reqm-tests.ts",
+"logtest.ts",
+        "logsearch-tests.ts"
     ]
 }

@@ -196,7 +196,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     /**
      * Get content from a resource specified by a URL or options.
      */
-    get(arg: RequestArg): Promise<RequestInfo> {
+    get(arg?: RequestArg): Promise<RequestInfo> {
         return this.requestForInfo(this.info('GET', arg))
     }
 
@@ -238,7 +238,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     /**
      * Delete a resource.
      */
-    del(arg: RequestArg, body?, type?: string): Promise<RequestInfo> {
+    del(arg?: RequestArg, body?, type?: string): Promise<RequestInfo> {
         return this.requestForInfo(this.info('DELETE', arg, body, type))
     }
 
@@ -246,7 +246,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     /**
      * Return a new RequestInfo.
      */
-    private info(m: string, arg: RequestArg, body?, type?: string): RequestInfo {
+    private info(m: string, arg?: RequestArg, body?, type?: string): RequestInfo {
         const r = this.infoForArg(arg)
 
         r.options.method = m
@@ -282,12 +282,14 @@ export abstract class RequestManager extends Notifier<RequestListener> {
      * a URL (string), options (RequestOptions), or a RequestInfo.
      */
     private infoForArg(arg?: RequestArg): RequestInfo {
-        if (arg instanceof RequestInfo) {
-            return <RequestInfo>arg
-        }
+        if (arg) {
+            if (arg instanceof RequestInfo) {
+                return <RequestInfo>arg
+            }
 
-        if (typeof arg === 'string') {
-            return this.infoForUrl(<string>arg)
+            if (typeof arg === 'string') {
+                return this.infoForUrl(<string>arg)
+            }
         }
 
         return this.infoForOptions(<RequestOptions>arg)
@@ -306,7 +308,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
         return this.initialInfo(opts)
     }
 
-    private infoForOptions(options: RequestOptions): RequestInfo {
+    private infoForOptions(options?: RequestOptions): RequestInfo {
         const opts = Object.assign({}, this.defaultOptionsVar)
 
         if (opts.url) {
@@ -314,13 +316,15 @@ export abstract class RequestManager extends Notifier<RequestListener> {
             delete opts.url
         }
 
-        const headers = opts.headers
-        Object.assign(opts, options)
-        if (headers && options.headers) {
-            opts.headers = Object.assign({}, headers, options.headers)
-        }
-        if (options.url) {
-            Object.assign(opts, this.optionsForUrl(options.url))
+        if (options) {
+            const headers = opts.headers
+            Object.assign(opts, options)
+            if (headers && options.headers) {
+                opts.headers = Object.assign({}, headers, options.headers)
+            }
+            if (options.url) {
+                Object.assign(opts, this.optionsForUrl(options.url))
+            }
         }
 
         return this.initialInfo(opts)

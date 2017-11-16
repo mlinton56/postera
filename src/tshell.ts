@@ -6,7 +6,7 @@
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
  *
-VERSION 0.1.1
+VERSION 0.1.2
 README
 ## tshell
 
@@ -246,7 +246,7 @@ export class JobInfo {
     get cmdline() {
         const p = this.prog
         if (typeof p === 'string') {
-            return cmdline(p, this.args)
+            return line(p, this.args)
         }
 
         const command = <Cmd>p
@@ -368,6 +368,18 @@ export function output(p: Program, ...arglist: ExecArg[]): Promise<string> {
         )
     })
 }
+
+/**
+ * Return a command-line string for a given program and argument list.
+ */
+export function cmdline(p: Program, ...arglist: ExecArg[]): string {
+    // TODO?: The factoring here seems a bit clunky.
+    const [args, context] = execArgs(arglist)
+    const job = new JobInfo()
+    flatten(p, args, job)
+    return job.cmdline
+}
+
 
 /**
  * Interface to control execution context.
@@ -663,7 +675,7 @@ abstract class CmdTask {
      * of the protected output property.
      */
     get captured(): string {
-        return this.output.join().replace(/\n+/g, ' ').trim()
+        return this.output.join('').replace(/\n+/g, ' ').trim()
     }
     set captured(c: string) {
         this.output = c ? [c] : []
@@ -923,7 +935,7 @@ class ChildTask extends CmdTask {
     }
 
     cmdline(): string {
-        return cmdline(this.arg0, this.args)
+        return line(this.arg0, this.args)
     }
 
 }
@@ -992,10 +1004,11 @@ function flatten(prog: Program, args: string[], job: JobInfo): void {
 
 
 /**
- * Return a single string representing a command line for program and arg list.
+ * Return a single string containing for program and arg list separated by
+ * spaces and quoted as needed.
  */
-function cmdline(prog: string, argv: string[]): string {
-    return [quoteIf(prog), ...argv.map(quoteIf)].join(' ')
+function line(prog: string, argv: string[]): string {
+    return [prog, ...argv].map(quoteIf).join(' ')
 }
 
 const dq = '"'

@@ -6,7 +6,7 @@
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
  *
-VERSION 0.1.0
+VERSION 0.1.1
 README
 ## slogger
 
@@ -54,22 +54,36 @@ EOF
 import fs = require('fs')
 
 export enum Level {
-    trivial, verbose, debug, info, warn, error, panic
+    error, warn, info, verbose, debug
 }
+
+// TODO: Allow Level values in addition to (or instead of) strings.
+export type LevelSpec = string
+
+export function levelStr(spec: LevelSpec): string {
+    return spec
+}
+
+export function levelVal(spec: LevelSpec): Level {
+    return Level[spec]
+}
+
 
 /**
  * SimpleLogger defines an interface common to most logging libraries,
  * winston in particular.
  */
 export interface SimpleLogger {
-    level: string
+    level: LevelSpec
 
-    log(level: string, msg: string, ...args: any[]): SimpleLogger
+    log(level: LevelSpec, msg: string, ...args: any[]): SimpleLogger
     error(msg: string | Error, ...args: any[]): SimpleLogger
     warn(msg: string | Error, ...args: any[]): SimpleLogger
     info(msg: string | Error, ...args: any[]): SimpleLogger
-    debug(msg: string | Error, ...args: any[]): SimpleLogger
     verbose(msg: string | Error, ...args: any[]): SimpleLogger
+    debug(msg: string | Error, ...args: any[]): SimpleLogger
+
+    visible(level: LevelSpec): boolean
 }
 
 /**
@@ -78,8 +92,9 @@ export interface SimpleLogger {
  */
 export abstract class BaseLogger implements SimpleLogger {
 
-    abstract level: string
-    abstract log(level: string, msg: string, ...args: any[]): SimpleLogger
+    abstract level: LevelSpec
+    abstract log(level: LevelSpec, msg: string, ...args: any[]): SimpleLogger
+    abstract visible(level: LevelSpec): boolean
 
 
     errStackFlag: boolean = true
@@ -97,12 +112,12 @@ export abstract class BaseLogger implements SimpleLogger {
         return this.log('info', convert(msg, this), ...args)
     }
 
-    debug(msg: string | Error, ...args: any[]): SimpleLogger {
-        return this.log('debug', convert(msg, this), ...args)
-    }
-
     verbose(msg: string | Error, ...args: any[]): SimpleLogger {
         return this.log('verbose', convert(msg, this), ...args)
+    }
+
+    debug(msg: string | Error, ...args: any[]): SimpleLogger {
+        return this.log('debug', convert(msg, this), ...args)
     }
 
 }
@@ -131,10 +146,14 @@ export class ProxyLogger extends BaseLogger {
     }
 
     get level() { return this.implVar.level }
-    set level(level: string) { this.implVar.level = level }
+    set level(level: LevelSpec) { this.implVar.level = level }
 
-    log(level: string, msg: string | Error, ...args: any[]): SimpleLogger {
+    log(level: LevelSpec, msg: string | Error, ...args: any[]): SimpleLogger {
         return this.implVar.log(level, convert(msg, this), ...args)
+    }
+
+    visible(level: LevelSpec): boolean {
+        return levelVal(level) <= levelVal(this.implVar.level)
     }
 
 }
@@ -171,15 +190,24 @@ export abstract class ConfigurableLogger extends BaseLogger {
 
 class FileLogger extends ConfigurableLogger {
 
-    level: string
-    private curlevel: number
+    private levelVar: LevelSpec
+    get level() {
+        return this.levelVar
+    }
+
+    set level(level) {
+        this.levelVar = level
+        this.curlevel = Level[level]
+    }
+
+    private curlevel: Level
     private file = -1
     private timestamp = 0
 
     configModified(): void {
         const cfg = this.config
         this.level = cfg.level || 'info'
-        this.curlevel = Level[this.level]
+        this.curlevel = levelVal(this.level)
         this.errStackFlag = cfg.errStackFlag
 
         if (cfg.file) {
@@ -188,8 +216,8 @@ class FileLogger extends ConfigurableLogger {
         }
     }
 
-    log(level: string, msg: string | Error, ...args: any[]): SimpleLogger {
-        if (Level[level] < this.curlevel) {
+    log(level: LevelSpec, msg: string | Error, ...args: any[]): SimpleLogger {
+        if (level && !this.visible(level)) {
             return
         }
 
@@ -239,6 +267,10 @@ class FileLogger extends ConfigurableLogger {
         if (cfg.consoleFlag) {
             console.log(line)
         }
+    }
+
+    visible(level: LevelSpec): boolean {
+        return levelVal(level) <= this.curlevel
     }
 
 }

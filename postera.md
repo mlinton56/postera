@@ -1,4 +1,4 @@
-VERSION 0.2.1
+VERSION 0.3.0
 Modules for developing and connecting software components
 README
 ## postera
@@ -8,6 +8,8 @@ The postera package is a collection of the following TypeScript modules:
 <ul>
 <li><a href="doc/kstore.md">kstore</a> &mdash;
 Use a key-value store (e.g., Redis) to share data</li>
+<li><a href="doc/logsearch.md">kstore</a> &mdash;
+Search logs (e.g., Papertrail)</li>
 <li><a href="doc/qio.md">qio</a> &mdash;
 Use queues to send and receive messages</li>
 <li><a href="doc/notifier.md">notifier</a> &mdash;

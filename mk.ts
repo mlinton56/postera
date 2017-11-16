@@ -35,12 +35,13 @@ const sed = tshell.cmd('sed')
 
 const dependencies = {
     kstore: ['slogger'],
+    logsearch: ['reqm', 'slogger'],
     nodereqm: ['reqm'],
     notifier: [],
     qio: ['notifier', 'slogger'],
     reqm: ['notifier'],
-    tshell: [],
     slogger: [],
+    tshell: [],
     webreqm: ['reqm']
 }
 
@@ -72,7 +73,8 @@ async function packList(argv: string[]) {
 }
 
 const externalModules = [
-    'tshell', 'slogger', 'notifier', 'qio', 'kstore', 'reqm'
+    'tshell', 'slogger',
+    'notifier', 'qio', 'kstore', 'reqm', 'logsearch'
 ]
 
 const internalModules = [ 'nodereqm', 'webreqm' ]
