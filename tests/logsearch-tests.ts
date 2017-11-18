@@ -12,11 +12,8 @@ async function main(argv: string[]) {
 
         const now = Math.round(Date.now() / 1000)
         const m = logsearch.manager('papertrail', params(argv, {
-            groupId: '5701371',
+            groupId: '5701371', //start: now - 5, stop: now,
             start: 1510701592, stop: 1510701594
-            //start: now - 5,
-            //newestFirst: true,
-            //stop: now
         }))
 
         await m.search(handleEvent)
@@ -59,25 +56,23 @@ function params(argv: string[], defaults): logsearch.SearchParams {
         case '-t':
         case '-token':
         case '--token':
-            i = nextArg(argv, i)
-            r.token = argv[i]
+            [r.token, i] = nextArg(argv, i)
             break
 
+        case '-g':
+        case '-group':
         case '--group':
-            i = nextArg(argv, i)
-            r.group = argv[i]
+            [r.group, i] = nextArg(argv, i)
             break
 
         case '--group-id':
-            i = nextArg(argv, i)
-            r.groupId = argv[i]
+            [r.groupId, i] = nextArg(argv, i)
             break
 
         case '-p':
         case '-page-size':
         case '--page-size':
-            i = nextArg(argv, i)
-            r.pageSize = parseInt(argv[i])
+            [r.pageSize, i] = nextArg(argv, i)
             break
 
         case '-newest':
@@ -89,14 +84,12 @@ function params(argv: string[], defaults): logsearch.SearchParams {
 
         case '-start':
         case '--start':
-            i = nextArg(argv, i)
-            r.start = argv[i]
+            [r.start, i] = nextArg(argv, i)
             break
 
         case '-stop':
         case '--stop':
-            i = nextArg(argv, i)
-            r.stop = argv[i]
+            [r.stop, i] = nextArg(argv, i)
             break
 
         default:
@@ -107,14 +100,14 @@ function params(argv: string[], defaults): logsearch.SearchParams {
     return r
 }
 
-function nextArg(argv: string[], i: number): number {
+function nextArg(argv: string[], i: number): [string, number] {
     const i1 = i + 1
 
     if (i1 >= argv.length) {
         throw new Error('Expected argument after ' + argv[i])
     }
 
-    return i1
+    return [argv[i1], i1]
 }
 
 main(process.argv.slice(2))

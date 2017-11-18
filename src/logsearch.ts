@@ -48,7 +48,7 @@ export class SearchParams {
     stop?: Date | string | number
     newestFirst?: boolean
     filter?: string
-    pageSize?: number
+    pageSize?: number | string
     retryMax?: number
     retryDelay?: number
 }

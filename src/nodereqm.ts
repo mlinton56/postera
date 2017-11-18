@@ -31,16 +31,19 @@ export default class NodeRequestManager extends reqm.RequestManager {
                 response.on('error', (err) => {
                     r.responseBody = content(response.headers, buffers)
                     super.handleResponseError(r, err, reject)
+                    clearNodeRequest(r)
                 })
 
                 response.on('end', () => {
                     r.responseBody = content(response.headers, buffers)
                     this.handleResponse(r, response.statusCode, resolve, reject)
+                    clearNodeRequest(r)
                 })
             })
 
             req.on('error', (err) => {
                 super.handleRequestError(r, err, reject)
+                clearNodeRequest(r)
             })
 
             const body = r.requestBody
@@ -53,13 +56,39 @@ export default class NodeRequestManager extends reqm.RequestManager {
             }
             req.end()
 
+            saveNodeRequest(r, req)
+
             super.handleSent(r)
         })
     }
 
+    cancellation(r: reqm.RequestInfo): reqm.RequestInfo {
+        const req = nodeInfo(r).nodeRequest
+        if (req) {
+            req.abort()
+        }
+
+        return r
+    }
+
 }
 
+function saveNodeRequest(r: reqm.RequestInfo, req): void {
+    nodeInfo(r).nodeRequest = req
+}
+
+function clearNodeRequest(r: reqm.RequestInfo): void {
+    nodeInfo(r).nodeRequest = null
+}
+
+function nodeInfo(r: reqm.RequestInfo): NodeRequestInfo {
+    return <NodeRequestInfo>r
+}
+
+
 class NodeRequestInfo extends reqm.RequestInfo {
+
+    nodeRequest: any
 
     responseHeader(name: string): string {
         return this.response.headers[name]

@@ -32,21 +32,25 @@ export default class WebRequestManager extends reqm.RequestManager {
                 r.response = req
                 r.responseBody = req.response
                 this.handleResponse(r, req.status, resolve, reject)
+                clearWebRequest(r)
             }, false)
 
             req.addEventListener('error', (event) => {
                 const err = new Error(event.type)
                 super.handleRequestError(r, new Error(event.type), reject)
+                clearWebRequest(r)
             }, false)
 
             req.addEventListener('abort', (event) => {
                 const err = new Error(event.type)
                 super.handleResponseError(r, new Error(event.type), reject)
+                clearWebRequest(r)
             }, false)
 
             req.addEventListener('timeout', (event) => {
                 const err = new Error(event.type)
                 super.handleResponseError(r, new Error(event.type), reject)
+                clearWebRequest(r)
             }, false)
 
             if (r.requestBody) {
@@ -55,13 +59,39 @@ export default class WebRequestManager extends reqm.RequestManager {
                 req.send()
             }
 
+            saveWebRequest(r, req)
+
             super.handleSent(r)
         })
     }
 
+    cancellation(r: reqm.RequestInfo): reqm.RequestInfo {
+        const req = webInfo(r).webRequest
+        if (req) {
+            req.abort()
+        }
+
+        return r
+    }
+
 }
 
+function saveWebRequest(r: reqm.RequestInfo, req): void {
+    webInfo(r).webRequest = req
+}
+
+function clearWebRequest(r: reqm.RequestInfo): void {
+    webInfo(r).webRequest = null
+}
+
+function webInfo(r: reqm.RequestInfo): WebRequestInfo {
+    return <WebRequestInfo>r
+}
+
+
 class WebRequestInfo extends reqm.RequestInfo {
+
+    webRequest: any
 
     responseHeader(name: string) {
         return this.response.getResponseHeader(name)

@@ -5,7 +5,7 @@
  *
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
-VERSION 0.1.1
+VERSION 0.2.0
 README
 ## reqm
 
@@ -193,6 +193,12 @@ export abstract class RequestManager extends Notifier<RequestListener> {
      * fulfilled when the response is complete.
      */
     abstract requestForInfo(r: RequestInfo): Promise<RequestInfo>
+
+    /**
+     * Return a cancellation for a request, which is just the request itself
+     * with or without the response depending on the timing.
+     */
+    abstract cancellation(r: RequestInfo): RequestInfo
 
 
     /**

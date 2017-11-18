@@ -142,7 +142,7 @@ async function compile(modules: string[], outdir: string) {
     if (args.length) {
         logInfo('compiling ' + info.join(' '))
         await exec('tsc', '--target', 'es6', '--alwaysStrict', 'true',
-            '--baseUrl', srcdir, '--outdir', outdir,
+            '--baseUrl', srcdir, '--outdir', outdir, '--noEmitOnError',
             '--module', 'commonjs', '--removeComments', 'true',
             '--typeRoots', 'node_modules/@types', '--types', 'node',
             '--declaration', 'true', '--sourceMap', 'true', ...args,
