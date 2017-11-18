@@ -5,7 +5,7 @@
  *
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
-VERSION 0.1.0
+VERSION 0.1.1
 README
 ## reqm
 
@@ -109,9 +109,9 @@ export interface RequestOptions {
 /**
  * Return a RequestOptions object from an implementation-dependent URL object,
  * which should only contain RequestObjects fields excluding url.
- * The important feature here is that we do not copy null values
- * from the URL object so we can can the desired result using the result
- * with Object.assign.
+ *
+ * The important feature here is that we do not copy null values from the
+ * URL object so we get the desired result when using Object.assign.
  */
 export function urlOptions<T extends object>(urlObject: T): RequestOptions {
     const options = {}
@@ -120,6 +120,8 @@ export function urlOptions<T extends object>(urlObject: T): RequestOptions {
     for (const prop in <any>urlObject) {
         if (urlObject.hasOwnProperty(prop)) {
             const value = urlObject[prop]
+
+            // Don't copy undefined or null, do copy empty string, 0, and false.
             if (value != null) {
                 options[prop] = value
             }
@@ -281,7 +283,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
      * Return a RequestInfo for a RequestArg that could be
      * a URL (string), options (RequestOptions), or a RequestInfo.
      */
-    private infoForArg(arg?: RequestArg): RequestInfo {
+    infoForArg(arg?: RequestArg): RequestInfo {
         if (arg) {
             if (arg instanceof RequestInfo) {
                 return <RequestInfo>arg
@@ -295,7 +297,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
         return this.infoForOptions(<RequestOptions>arg)
     }
 
-    private infoForUrl(url: string): RequestInfo {
+    infoForUrl(url: string): RequestInfo {
         const opts = Object.assign({}, this.defaultOptionsVar)
 
         if (opts.url) {
@@ -308,7 +310,7 @@ export abstract class RequestManager extends Notifier<RequestListener> {
         return this.initialInfo(opts)
     }
 
-    private infoForOptions(options?: RequestOptions): RequestInfo {
+    infoForOptions(options?: RequestOptions): RequestInfo {
         const opts = Object.assign({}, this.defaultOptionsVar)
 
         if (opts.url) {
@@ -709,34 +711,34 @@ export class CookieMap {
 }
 
 
-const implMap = new Map<string,RequestManager>()
-
-export function manager(impl: string): RequestManager {
-    let m = implMap.get(impl)
-
-    if (!m) {
+export function manager(optImpl?: string): RequestManager {
+    const impl = optImpl || defaultImpl()
+    if (impl) {
         const cl = require(impl + '.js')['default']
-        m = new cl()
-        implMap[impl] = m
+        return new cl()
     }
 
-    return m
+    throw new Error('Unrecognized reqm environment')
 }
+
+export function defaultImpl(): string {
+    if (typeof window !== 'undefined') {
+        return './webreqm'
+    }
+
+    if (typeof module !== 'undefined' && module.exports != null) {
+        return './nodereqm'
+    }
+
+    return undefined
+}
+
 
 let defaultManagerVar: RequestManager
 
 export function defaultManager(): RequestManager {
     if (!defaultManagerVar) {
-        let impl
-        if (typeof window !== 'undefined') {
-            impl = './webreqm'
-        } else if (typeof module !== 'undefined' && module.exports != null) {
-            impl = './nodereqm'
-        } else {
-            throw new Error('Unrecognized RequestManager environment')
-        }
-
-        defaultManagerVar = manager(impl)
+        defaultManagerVar = manager()
         defaultManagerVar.redirector = defaultRedirector
     }
 
@@ -832,7 +834,7 @@ export class HttpStatusException extends HttpException {
 
 
     constructor(r: RequestInfo) {
-        super(r, 'HttpStatusException')
+        super(r, 'HttpStatusException ' + this.code.toString())
     }
 
 }

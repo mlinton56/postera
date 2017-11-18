@@ -26,26 +26,27 @@ import logger from './slogger'
 
 /**
  * Parameters for a search. The token authorizes access to logs,
- * name identifies a log or set of logs, start and stop specify a date range
+ * group identifies a log or set of logs, start and stop specify a date range
  * that includes the start time and excludes the stop time, newestFirst
  * specifies whether to deliver events oldest-to-newest (default) or
  * newest-to-oldest, and filter is a pattern matched against each log entry.
  *
  * For large searches, one can provide additional parameters to control
- * network/file requests: batchSize is the maximum number of events
+ * network/file requests: pageSize is the maximum number of events
  * to retrieve and process at once, retryMax and retryDelay control
  * how to handle a network failure. A search may overlap reading with
  * processing by retrieving additional log entries while processing
- * the current batch.
+ * the current page.
  */
 export class SearchParams {
     token?: string
-    name?: string
+    group?: string
+    groupId?: string
     start?: Date | string | number
     stop?: Date | string | number
     newestFirst?: boolean
     filter?: string
-    batchSize?: number
+    pageSize?: number
     retryMax?: number
     retryDelay?: number
 }
@@ -56,15 +57,16 @@ export class SearchParams {
  * The handler may return a boolean value of false to indicate
  * the search should stop when the handler returns. A handler also
  * may return a Promise that the search process will wait to be fulfilled
- * before processing the next log entry. The way to do that probably is
- * to pass a second parameter to the SearchResultHandler that takes
- * an extractor object that knows how to interpret the log entry
- * for a particular log implementation.
+ * before processing the next log entry.
+ *
+ * The search result representation is currently implementation-dependent.
+ * Probably should pass a second parameter to a SearchResultHandler that
+ * provides access to an entry's timestamp, level, and text.
  */
-export type SearchResultEntry = any
+export type SearchResult = any
 export type OptionalBoolean = boolean | void
 export type SearchResultHandler =
-    (entry: SearchResultEntry) => OptionalBoolean | Promise<OptionalBoolean>
+    (entry: SearchResult) => OptionalBoolean | Promise<OptionalBoolean>
 
 /**
  * A search manager creates and execute search processes given
@@ -82,13 +84,25 @@ export abstract class SearchManager {
 
 }
 
+/**
+ * Return a new search manager for the given implementation.
+ */
+export function manager(impl: string, defaults?: SearchParams): SearchManager {
+    // TODO: Move the Papertrail implementation to a separate module.
+    if (impl.toLowerCase() === 'papertrail') {
+        return PapertrailManager.initial(defaults)
+    }
+
+    throw new Error('Unknown implementation: ' + impl)
+}
+
+
 type PapertrailParams = any
-type PapertrailBatch = any
-type PapertrailEvent = any
+type PapertrailPage = any
 
-const papertrailTokenHeader = 'X-Papertrail-Token'
+const papertrailHeader = 'X-Papertrail-Token'
 
-export class PapertrailManager extends SearchManager {
+class PapertrailManager extends SearchManager {
 
     private tokenVar: string
     get token() {
@@ -97,7 +111,7 @@ export class PapertrailManager extends SearchManager {
     set token(token) {
         this.tokenVar = token
         const headers = this.requests.defaultOptions.headers
-        headers[papertrailTokenHeader] = token
+        headers[papertrailHeader] = token
     }
 
     private requests: reqm.RequestManager
@@ -112,12 +126,14 @@ export class PapertrailManager extends SearchManager {
     static initial(params?: SearchParams): PapertrailManager {
         const m = new PapertrailManager()
         m.requests = reqm.defaultManager()
-        m.defaultParams = Object.assign({batchSize: 250}, params)
+        m.defaultParams = Object.assign({pageSize: 250}, params)
 
         const defaultOptions = m.requests.defaultOptions
         defaultOptions.protocol = 'https:'
         defaultOptions.hostname = 'papertrailapp.com'
-        defaultOptions.headers = {[papertrailTokenHeader]: params.token}
+        defaultOptions.headers = {
+            [papertrailHeader]: params.token || process.env.PAPERTRAIL_API_TOKEN
+        }
         return m
     }
 
@@ -128,27 +144,40 @@ export class PapertrailManager extends SearchManager {
             const requests = this.requests
             const headers = requests.defaultOptions.headers
             if (params.token) {
-                headers[papertrailTokenHeader] = params.token
-            } else if (!headers[papertrailTokenHeader]) {
+                headers[papertrailHeader] = params.token
+            } else if (!headers[papertrailHeader]) {
                 reject(new Error('Missing API token'))
                 return
             }
 
-            const s = new PapertrailSearch()
+            const s = params.newestFirst ?
+                new PapertrailBackwardSearch() : new PapertrailForwardSearch()
+
             s.requests = requests
             s.func = f
             s.resolve = resolve
             s.reject = reject
 
-            if (params.name) {
-                const map = this.groupMap
-                if (map) {
-                    s.start(params, map)
+            if (params.group) {
+                if (this.groupMap) {
+                    this.startGroup(s, params)
                 } else {
-                    this.loadGroupMap().then((m) => s.start(params, m), reject)
+                    this.loadMap().then(() => this.startGroup(s, params), reject)
                 }
+            } else {
+                s.start(params)
             }
         })
+    }
+
+    private startGroup(s: PapertrailSearch, params: SearchParams): void {
+        const groupId = this.groupMap.get(params.group)
+        if (groupId) {
+            params.groupId = groupId
+            s.start(params)
+        } else {
+            s.reject(new Error('Undefined group "' + params.group + '"'))
+        }
     }
 
     /**
@@ -156,16 +185,15 @@ export class PapertrailManager extends SearchManager {
      *
      * Assumes the set of groups is static and modest in size.
      */
-    private async loadGroupMap() {
-        const m = new Map<string,string>()
-        this.groupMap = m
-
+    private async loadMap() {
         const info = await this.requests.get('/api/v1/groups.json')
+
+        const m = new Map<string,string>()
         for (const g of info.result) {
             m.set(g.name, g.id)
         }
 
-        return m
+        this.groupMap = m
     }
 
     /**
@@ -180,62 +208,46 @@ export class PapertrailManager extends SearchManager {
 /**
  * Implement a search using the Papertrail API.
  *
- * We overlap retrieval and processing using the nextBatch instance variable
+ * We overlap retrieval and processing using the nextPage instance variable
  * as a second results buffer. The running flag indicates that the search
  * is in progress, the retrieving flag indicates we are waiting for a request
  * (or waiting to retry one), the delivering flag indicates we are processing
- * a batch.
+ * a page.
  */
-class PapertrailSearch {
+abstract class PapertrailSearch {
 
     requests: reqm.RequestManager
     func: SearchResultHandler
     resolve: () => void
     reject: (err) => void
 
-    private options: reqm.RequestOptions
-    private apiParams: PapertrailParams
-    private newestFirst: boolean
-    private startTime: number
-    private stopTime: number
+    protected options: reqm.RequestOptions
+    protected apiParams: PapertrailParams
+    protected startTime: number
+    protected stopTime: number
     private running: boolean
     private retrieving: boolean
     private delivering: boolean
-    private nextBatch: PapertrailBatch
+    private nextPage: PapertrailPage
     private retryMax: number
     private retryDelay: number
 
-    start(params: SearchParams, map: Map<string,string>): void {
+    start(params: SearchParams): void {
         this.options = Object.assign({}, this.requests.defaultOptions)
         this.options.pathname = '/api/v1/events/search.json'
 
         this.apiParams = {}
         const apiParams = this.apiParams
 
-        const group = params.name
-        if (group) {
-            const groupId = map.get(group)
-            if (!groupId) {
-                this.fail(new Error('Undefined group "' + group + '"'))
-                return
-            }
-
-            apiParams.group_id = groupId
+        if (params.groupId) {
+            apiParams.group_id = params.groupId
         }
-
-        const newestFirst = params.newestFirst
 
         if (params.start) {
             this.startTime = epochTime(params.start)
-            if (!newestFirst) {
-                apiParams.min_time = this.startTime
-            }
         }
         if (params.stop) {
             this.stopTime = epochTime(params.stop)
-            if (newestFirst) {
-                apiParams.max_time = this.stopTime
-            }
         }
         apiParams.tail = !params.start && !params.stop
 
@@ -243,31 +255,37 @@ class PapertrailSearch {
             apiParams.q = params.filter
         }
 
-        if (params.batchSize) {
-            apiParams.limit = params.batchSize
+        if (params.pageSize) {
+            apiParams.limit = params.pageSize
         }
 
-        this.newestFirst = newestFirst
         this.retryMax = params.retryMax || 3
         this.retryDelay = Math.round(1000 * (params.retryDelay || 0.25))
         this.running = true
         this.delivering = false
 
-        //
-        // After generating the search string we remove min_time and max_time
-        // because subsequent calls must use min_id or max_id to avoid duplicates. 
-        //
-        this.options.search = this.searchString()
-        delete apiParams.min_time
-        delete apiParams.max_time
-        this.retrieveBatch()
+        this.options.search = this.firstSearchString()
+        this.retrievePage()
     }
+
+    /**
+     * Return the first search string, adding min_time/max_time
+     * depending on the delivery order and then removing those apiParams
+     * so subsequent calls use min_id/max_id to avoid duplicates.
+     */
+    protected abstract firstSearchString(): string
+
+    /**
+     * Return the next search string, assigning min_id to previous max_id
+     * going forward or max_id to previous min_id going backward.
+     */
+    protected abstract nextSearchString(minId: string, maxId: string): string
 
     /**
      * Return the Papertrail URL query for the current search.
      * The max/min params change as we make multiple requests for a search.
      */
-    private searchString(): string {
+    protected searchString(): string {
         let str
 
         const params = this.apiParams
@@ -286,28 +304,25 @@ class PapertrailSearch {
     }
 
     /**
-     * Retrieve a batch using HTTP. We retry if a there is a connection error
+     * Retrieve a page using HTTP. We retry if a there is a connection error
      * up to this.retryMax times.
      */
-    private retrieveBatch(retryCount = 0): void {
+    private retrievePage(retryCount = 0): void {
         this.retrieving = true
-logger.debug('retrieving batch ' + this.options.search)
         this.requests.get(this.options).then(
             (info) => {
-logger.debug('retrieved batch ' + info.result.min_id + ',' + info.result.max_id)
                 this.retrieving = false
                 if (this.delivering) {
-logger.debug('buffering batch')
-                    this.nextBatch = info.result
+                    this.nextPage = info.result
                 } else if (this.running) {
-                    this.receiveBatch(info.result)
+                    this.receivePage(info.result)
                 }
             },
             (err) => {
                 if (isNetworkError(err) && retryCount < this.retryMax) {
                     const n = retryCount + 1
-                    logger.info('retrieveBatch retry ' + n)
-                    setTimeout(() => this.retrieveBatch(n), this.retryDelay)
+                    logger.info('retrievePage retry ' + n)
+                    setTimeout(() => this.retrievePage(n), this.retryDelay)
                 } else {
                     this.retrieving = false
                     this.fail(err)
@@ -317,10 +332,10 @@ logger.debug('buffering batch')
     }
 
     /**
-     * Receive a batch. We might still be working on a batch
+     * Receive a page. We might still be working on a page
      * when a request completes, in which case we simply store
-     * the new batch in this.nextBatch. Otherwise, we start delivering
-     * the events in the batch.
+     * the new page in this.nextPage. Otherwise, we start delivering
+     * the events in the page.
      *
      * A complicated part here is dealing with Papertrail API quirks.
      * Reading events oldest-to-newest is problematic because Papertrail
@@ -328,56 +343,43 @@ logger.debug('buffering batch')
      * return a result with min_id or max_id equal to the passed-in value.
      * We ignore such results to avoid delivering duplicates.
      */
-    private receiveBatch(b: PapertrailBatch): void {
-        const apiParams = this.apiParams
-        if (b.min_id !== apiParams.min_id && b.max_id !== apiParams.max_id) {
-            const events = b.events
-            const n = events.length
-            const startTime = this.startTime
-            const stopTime = this.stopTime
-            const start = startTime ? this.findTime(events, startTime) : 0
-            const stop = stopTime ? this.findTime(events, stopTime) : n
-logger.debug('batch start ' + startTime + '(' + start + ')' + ' stop ' + stopTime + '(' + stop + ')')
-            if (stop > 0) {
-                this.beforeDelivery()
-                if (stop >= n &&
-                    (b.reached_record_limit || b.reached_time_limit)
-                ) {
-                    if (this.newestFirst) {
-                        apiParams.max_id = b.min_id
-                    } else {
-                        apiParams.min_id = b.max_id
-                    }
-                    this.options.search = this.searchString()
-                    this.retrieveBatch()
-                }
-                if (start < stop) {
-logger.debug('delivering batch (' + start + '..' + stop + ')')
-const first = b.events[start]
-logger.debug('first event ' + first.id + ' ' + first.generated_at)
-const last = b.events[stop - 1]
-logger.debug('last event ' + last.id + ' ' + last.generated_at)
-                    this.deliverEvents(b.events, start, stop)
-                } else {
-                    this.afterDelivery()
-                }
-                return
-            }
+    private receivePage(p: PapertrailPage): void {
+        const minId = p.min_id
+        const maxId = p.max_id
+        if (minId === this.apiParams.min_d || maxId === this.apiParams.max_id) {
+            this.succeed()
+            return
         }
 
-        this.succeed()
+        const events = p.events
+        const n = events.length
+        const startTime = this.startTime
+        const stopTime = this.stopTime
+        const start = startTime ? this.findTime(events, startTime) : 0
+        const stop = stopTime ? this.findTime(events, stopTime) : n
+        if (this.noEvents(n, start, stop)) {
+            this.succeed()
+            return
+        }
+
+        this.beforeDelivery()
+        if (p.reached_record_limit || p.reached_time_limit) {
+            this.options.search = this.nextSearchString(minId, maxId)
+            this.retrievePage()
+        }
+        this.deliver(events, start, stop)
     }
 
     /**
      * Find the lowest index of an event generated at or after
      * the given time, assuming the array is ordered oldest to newest.
      */
-    private findTime(events: PapertrailEvent[], time: number): number {
+    private findTime(events: SearchResult[], time: number): number {
         let i = 0
         let j = events.length - 1
         while (i <= j) {
             const k = Math.floor((i + j) / 2)
-            const t = Math.round(Date.parse(events[k].generated_at) / 1000)
+            const t = Math.round(Date.parse(events[k].received_at) / 1000)
             if (t < time) {
                 i = k + 1
             } else {
@@ -389,47 +391,30 @@ logger.debug('last event ' + last.id + ' ' + last.generated_at)
     }
 
     /**
-     * Deliver one or more events by calling the search result handler.
-     * If the handler returns false (explicitly--not a value that coerces
-     * to false) then we stop searching. If the handler returns a promise
-     * then we wait for it before continuing to the next event.
+     * Given that a page of n events has a range of [a,b) where
+     * a is the smallest index with time >= startTime and
+     * b is the smallest index with time >= stopTime
+     * return whether there are no further events in [start,stop).
+     *
+     * Going forward that means b is 0, going backward a is n.
      */
-    private deliverEvents(
-        events: PapertrailEvent[], start: number, stop: number
-    ): void {
-        try {
-            if (this.newestFirst) {
-                for (let i = stop - 1; i >= start; --i) {
-                    if (this.apply(events[i],
-                        () => this.deliverEvents(events, start, i - 1)
-                    )) {
-                        return
-                    }
-                }
-            } else {
-                for (let i = start; i < stop; ++i) {
-                    if (this.apply(events[i],
-                        () => this.deliverEvents(events, i + 1, stop)
-                    )) {
-                        return
-                    }
-                }
-            }
+    protected abstract noEvents(n: number, a: number, b: number): boolean
 
-            this.afterDelivery()
-        } catch (e) {
-            this.fail(e instanceof Error ? e : new Error(e.toString()))
-        }
-    }
+    /**
+     * Call the search result hander for events from [a,b) using
+     * this.apply for each event. The implementation depends
+     * on the order of search results (oldest-to-newest or newest-to-oldest).
+     */
+    protected abstract deliver(events: SearchResult[], a: number, b: number): void
 
     /**
      * Apply the search result handler to the given event. Returns true if
-     * either we are done delivering events or we use the given next function
-     * to continue delivery when a promise completes--either way the caller
-     * should stop delivering. Returns false if the caller should determine
-     * whether to continue.
+     * the caller should stop delivering--either because the handler
+     * returns false or we need to wait for a promise to finish. In the case
+     * of a promise completes successfully with a non-false value
+     * we will call the given next function to continue delivery.
      */
-    private apply(event: PapertrailEvent, next: () => void): boolean {
+    protected apply(event: SearchResult, next: () => void): boolean {
         const f = this.func
         const returnValue = f(event)
         if (returnValue === false) {
@@ -456,45 +441,138 @@ logger.debug('last event ' + last.id + ' ' + last.generated_at)
     }
 
     /**
-     * Note that we are in delivery mode so that receiving the next batch
+     * Note that we are in delivery mode so that receiving the next page
      * will wait for delivery to complete.
      */
-    private beforeDelivery(): void {
+    protected beforeDelivery(): void {
         this.delivering = true
     }
 
     /**
-     * After successfully delivering the events in a batch we check
+     * After successfully delivering the events in a page we check
      * if we are still retrieving (in which case just wait there),
-     * have a batch ready to deliver (call receiveBatch with the next batch),
+     * have a page ready to deliver (call receivePage with the next page),
      * or are done searching (resolve the search).
      */
-    private afterDelivery(): void {
+    protected afterDelivery(): void {
         this.delivering = false
 
         if (this.retrieving) {
-            // Wait for retrieve to complete.
-        } else if (this.nextBatch) {
-            const nextBatch = this.nextBatch
-            this.nextBatch = null
-            this.receiveBatch(nextBatch)
+            // Wait for retrieve to complete before any further processing.
+        } else if (this.nextPage) {
+            // Next page is ready, start processing it.
+            const nextPage = this.nextPage
+            this.nextPage = null
+            this.receivePage(nextPage)
         } else {
+            // Not retrieving, no next page, so we must be done.
             this.succeed()
         }
     }
 
-    private succeed(): void {
+    protected succeed(): void {
         this.running = false
-        this.nextBatch = null
+        this.nextPage = null
         const resolve = this.resolve
         resolve()
     }
 
-    private fail(err: Error): void {
+    protected fail(err: Error): void {
         this.running = false
-        this.nextBatch = null
+        this.nextPage = null
         const reject = this.reject
         reject(err)
+    }
+
+}
+
+/**
+ * Search implementation that delivers events oldest-to-newest.
+ */
+class PapertrailForwardSearch extends PapertrailSearch {
+
+    protected firstSearchString(): string {
+        const apiParams = this.apiParams
+        if (this.startTime) {
+            apiParams.min_time = this.startTime
+        }
+
+        const search = this.searchString()
+
+        delete apiParams.min_time
+
+        return search
+    }
+
+    protected nextSearchString(minId: string, maxId: string): string {
+        this.apiParams.min_id = maxId
+        return this.searchString()
+    }
+
+    protected noEvents(n: number, a: number, b: number): boolean {
+        return b <= 0
+    }
+
+    protected deliver(events: SearchResult[], a: number, b: number): void {
+        try {
+            for (let i = a; i < b; ++i) {
+                if (this.apply(events[i],
+                    () => this.deliver(events, i + 1, b)
+                )) {
+                    return
+                }
+            }
+
+            this.afterDelivery()
+        } catch (e) {
+            this.fail(e instanceof Error ? e : new Error(e.toString()))
+        }
+    }
+
+}
+
+/**
+ * Search implementation that delivers events newest-to-oldest.
+ */
+class PapertrailBackwardSearch extends PapertrailSearch {
+
+    protected firstSearchString(): string {
+        const apiParams = this.apiParams
+        if (this.stopTime) {
+            // stopTime is exclusive, max_time is inclusive
+            apiParams.max_time = this.stopTime - 1
+        }
+
+        const search = this.searchString()
+
+        delete apiParams.max_time
+
+        return search
+    }
+
+    protected nextSearchString(minId: string, maxId: string): string {
+        this.apiParams.max_id = minId
+        return this.searchString()
+    }
+
+    protected noEvents(n: number, a: number, b: number): boolean {
+        return a >= n
+    }
+
+    protected deliver(events: SearchResult[], a: number, b: number): void {
+        try {
+            for (let i = b - 1; i >= a; --i) {
+                if (this.apply(events[i],
+                    () => this.deliver(events, a, i - 1)
+                )) {
+                    return
+                }
+            }
+
+            this.afterDelivery()
+        } catch (e) {
+            this.fail(e instanceof Error ? e : new Error(e.toString()))
+        }
     }
 
 }
@@ -503,7 +581,7 @@ logger.debug('last event ' + last.id + ' ' + last.generated_at)
  * Return an epoch time (seconds) given a date, date string, or
  * number of seconds.
  */
-function  epochTime(t: Date | string | number): number {
+function epochTime(t: Date | string | number): number {
     if (typeof t === 'number') {
         return <number>t
     }

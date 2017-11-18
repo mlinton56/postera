@@ -4,14 +4,12 @@ import logger from 'postera/slogger'
 require('source-map-support').install()
 process.on('unhandledRejection', (err, p) => console.log(err.stack))
 
-logger.level = 'debug'
-
 async function main(argv: string[]) {
     try {
         const now = Math.round(Date.now() / 1000)
-        const m = logsearch.PapertrailManager.initial(params(argv, {
-            token: process.env.PAPERTRAIL_API_TOKEN,
-            start: 1510701592, stop: 1510701593
+        const m = logsearch.manager('papertrail', params(argv, {
+            groupId: '5701371',
+            start: 1510701592, stop: 1510701594
             //start: now - 5,
             //newestFirst: true,
             //stop: now
@@ -24,8 +22,7 @@ async function main(argv: string[]) {
 }
 
 function handleEvent(event) {
-    //console.log(event.generated_at + ': ' + event.id)
-    //console.log(event.generated_at + ': ' + event.message)
+    console.log(event.received_at + ': ' + event.message)
 }
 
 /**
@@ -55,16 +52,21 @@ function params(argv: string[], defaults): logsearch.SearchParams {
             console.log(usage)
             break
 
-        case '--name':
+        case '--group':
             i = nextArg(argv, i)
-            r.name = argv[i]
+            r.group = argv[i]
             break
 
-        case '-b':
-        case '-batch-size':
-        case '--batch-size':
+        case '--group-id':
             i = nextArg(argv, i)
-            r.batchSize = parseInt(argv[i])
+            r.groupId = argv[i]
+            break
+
+        case '-p':
+        case '-page-size':
+        case '--page-size':
+            i = nextArg(argv, i)
+            r.pageSize = parseInt(argv[i])
             break
 
         case '-newest':
