@@ -21,8 +21,10 @@ EOF
  *
  */
 
-import * as reqm from './reqm'
+import {defaultManager, RequestInfo} from './reqm'
 import logger from './slogger'
+
+const reqm = defaultManager()
 
 /**
  * Parameters for a search. The token authorizes access to logs,
@@ -97,8 +99,9 @@ export function manager(impl: string, defaults?: SearchParams): SearchManager {
 }
 
 
-type PapertrailParams = any
+
 type PapertrailPage = any
+type PapertrailParams = any
 
 const papertrailHeader = 'X-Papertrail-Token'
 
@@ -110,11 +113,10 @@ class PapertrailManager extends SearchManager {
     }
     set token(token) {
         this.tokenVar = token
-        const headers = this.requests.defaultOptions.headers
-        headers[papertrailHeader] = token
+        this.request.headerMod(papertrailHeader, token)
     }
 
-    private requests: reqm.RequestManager
+    private request: RequestInfo
     private defaultParams: SearchParams
     private groupMap: Map<string,string>
 
@@ -125,15 +127,14 @@ class PapertrailManager extends SearchManager {
      */
     static initial(params?: SearchParams): PapertrailManager {
         const m = new PapertrailManager()
-        m.requests = reqm.defaultManager()
-        m.defaultParams = Object.assign({pageSize: 250}, params)
-
-        const defaultOptions = m.requests.defaultOptions
-        defaultOptions.protocol = 'https:'
-        defaultOptions.hostname = 'papertrailapp.com'
-        defaultOptions.headers = {
-            [papertrailHeader]: params.token || process.env.PAPERTRAIL_API_TOKEN
-        }
+        m.defaultParams = Object.assign(
+            {token: process.env.PAPERTRAIL_API_TOKEN, pageSize: 250}, params
+        )
+        m.request = reqm.infoForOptions({
+            protocol: 'https:', hostname: 'papertrailapp.com',
+            headers: {[papertrailHeader]: m.defaultParams.token},
+            method: 'GET'
+        })
         return m
     }
 
@@ -141,11 +142,10 @@ class PapertrailManager extends SearchManager {
     search(f: SearchResultHandler, searchParams?: SearchParams): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const params = Object.assign({}, this.defaultParams, searchParams)
-            const requests = this.requests
-            const headers = requests.defaultOptions.headers
+            const request = this.request
             if (params.token) {
-                headers[papertrailHeader] = params.token
-            } else if (!headers[papertrailHeader]) {
+                request.headerMod(papertrailHeader, params.token)
+            } else if (!request.header(papertrailHeader)) {
                 reject(new Error('Missing API token'))
                 return
             }
@@ -153,7 +153,7 @@ class PapertrailManager extends SearchManager {
             const s = params.newestFirst ?
                 new PapertrailBackwardSearch() : new PapertrailForwardSearch()
 
-            s.requests = requests
+            s.request = request
             s.func = f
             s.resolve = resolve
             s.reject = reject
@@ -186,7 +186,9 @@ class PapertrailManager extends SearchManager {
      * Assumes the set of groups is static and modest in size.
      */
     private async loadMap() {
-        const info = await this.requests.get('/api/v1/groups.json')
+        const request = this.request
+        request.options.pathname  = '/api/v1/groups.json'
+        const info = await reqm.requestForInfo(request)
 
         const m = new Map<string,string>()
         for (const g of info.result) {
@@ -216,12 +218,11 @@ class PapertrailManager extends SearchManager {
  */
 abstract class PapertrailSearch {
 
-    requests: reqm.RequestManager
+    request: RequestInfo
     func: SearchResultHandler
     resolve: () => void
     reject: (err) => void
 
-    protected options: reqm.RequestOptions
     protected apiParams: PapertrailParams
     protected startTime: number
     protected stopTime: number
@@ -233,9 +234,6 @@ abstract class PapertrailSearch {
     private retryDelay: number
 
     start(params: SearchParams): void {
-        this.options = Object.assign({}, this.requests.defaultOptions)
-        this.options.pathname = '/api/v1/events/search.json'
-
         this.apiParams = {}
         const apiParams = this.apiParams
 
@@ -264,7 +262,9 @@ abstract class PapertrailSearch {
         this.running = true
         this.delivering = false
 
-        this.options.search = this.firstSearchString()
+        const options = this.request.options
+        options.pathname = '/api/v1/events/search.json'
+        options.search = this.firstSearchString()
         this.retrievePage()
     }
 
@@ -309,7 +309,7 @@ abstract class PapertrailSearch {
      */
     private retrievePage(retryCount = 0): void {
         this.retrieving = true
-        this.requests.get(this.options).then(
+        reqm.requestForInfo(this.request).then(
             (info) => {
                 this.retrieving = false
                 if (this.delivering) {
@@ -364,7 +364,7 @@ abstract class PapertrailSearch {
 
         this.beforeDelivery()
         if (p.reached_record_limit || p.reached_time_limit) {
-            this.options.search = this.nextSearchString(minId, maxId)
+            this.request.options.search = this.nextSearchString(minId, maxId)
             this.retrievePage()
         }
         this.deliver(events, start, stop)

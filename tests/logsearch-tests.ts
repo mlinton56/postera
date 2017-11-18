@@ -1,11 +1,15 @@
 import * as logsearch from 'postera/logsearch'
-import logger from 'postera/slogger' 
+import {defaultLogger as logger, ConfigurableLogger} from 'postera/slogger'
 
 require('source-map-support').install()
 process.on('unhandledRejection', (err, p) => console.log(err.stack))
 
 async function main(argv: string[]) {
     try {
+        const clogger = <ConfigurableLogger>(logger.impl)
+        clogger.config = {timeFlag: false, levelFlag: false}
+        clogger.level = 'debug'
+
         const now = Math.round(Date.now() / 1000)
         const m = logsearch.manager('papertrail', params(argv, {
             groupId: '5701371',
@@ -17,7 +21,7 @@ async function main(argv: string[]) {
 
         await m.search(handleEvent)
     } catch (e) {
-        logger.error(e instanceof Error ? <Error>e : e.toString())
+        logger.info(e instanceof Error ? <Error>e : e.toString())
     }
 }
 
@@ -50,6 +54,13 @@ function params(argv: string[], defaults): logsearch.SearchParams {
         case '-help':
         case '--help':
             console.log(usage)
+            break
+
+        case '-t':
+        case '-token':
+        case '--token':
+            i = nextArg(argv, i)
+            r.token = argv[i]
             break
 
         case '--group':

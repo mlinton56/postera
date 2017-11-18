@@ -834,7 +834,7 @@ export class HttpStatusException extends HttpException {
 
 
     constructor(r: RequestInfo) {
-        super(r, 'HttpStatusException ' + this.code.toString())
+        super(r, 'HttpStatusException ' + r.statusCode.toString())
     }
 
 }
