@@ -22,6 +22,11 @@ class Listener implements RequestListener {
         console.log('requestFailed: ' + r.responseLabel)
     }
 
+
+    requestCancellation(r: RequestInfo): void {
+        console.log('requestCancellation: ' + r.requestLabel)
+    }
+
     requestError(r: RequestInfo): void {
         console.log('requestError: ' + r.requestLabel)
     }
@@ -45,6 +50,10 @@ async function main() {
 
         reqm.listenerAdd(new Listener())
         console.log((await reqm.patch('/patch', data)).result.data)
+
+        const r = reqm.infoForOptions({method: 'GET'})
+        const p = reqm.requestForInfo(r)
+        reqm.cancellation(r)
 
         // Redirection tests
         await reqm.get('http://google.com')

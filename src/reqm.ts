@@ -83,6 +83,9 @@ export interface RequestListener {
     requestFailed?(r: RequestInfo): void
 
 
+    /** Request cancellation. */
+    requestCancellation?(r: RequestInfo): void
+
     /** Network error while sending request */
     requestError?(r: RequestInfo, err: Error): void
 
@@ -368,6 +371,11 @@ export abstract class RequestManager extends Notifier<RequestListener> {
     protected handleRequestError(r: RequestInfo, err: Error, reject): void {
         super.post('requestError', r, err)
         reject(new HttpRequestError(r, err))
+    }
+
+    protected handleRequestCancellation(r: RequestInfo, resolve): void {
+        super.post('requestCancellation', r)
+        resolve(r)
     }
 
     protected handleResponseError(r: RequestInfo, err: Error, reject): void {

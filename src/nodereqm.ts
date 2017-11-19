@@ -41,6 +41,11 @@ export default class NodeRequestManager extends reqm.RequestManager {
                 })
             })
 
+            req.on('abort', () => {
+                super.handleRequestCancellation(r, resolve)
+                clearNodeRequest(r)
+            })
+
             req.on('error', (err) => {
                 super.handleRequestError(r, err, reject)
                 clearNodeRequest(r)
