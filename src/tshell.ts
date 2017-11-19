@@ -101,8 +101,6 @@ EOF
  */
 
 // Direct access to Nodejs builtin modules--no type-checking here.
-declare function require(m: string): any
-const process = require('process')
 const child_process = require('child_process')
 const fs = require('fs')
 

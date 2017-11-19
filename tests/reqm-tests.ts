@@ -1,5 +1,4 @@
-import defaultManager from 'postera/reqm'
-import { RequestInfo, RequestListener, HttpStatusException } from 'postera/reqm'
+import { defaultManager, RequestInfo, RequestListener } from 'postera/reqm'
 
 require('source-map-support').install()
 process.on('unhandledRejection', function(err, p) { console.log(err.stack) })
@@ -64,12 +63,7 @@ async function main() {
         const options = {pathname: '/headers', headers: {authorization: 'token'}}
         console.log((await reqm.get(options)).result.headers.Authorization)
     } catch (e) {
-        if (e instanceof HttpStatusException) {
-            const ex = <HttpStatusException>e
-            console.log('HttpStatusException: ' + ex.code)
-        } else {
-            console.log(e.toString())
-        }
+        console.log(e.toString())
     }
 }
 

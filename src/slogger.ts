@@ -51,8 +51,6 @@ using the <code>fileLogger</code> function.
 EOF
  */
 
-import fs = require('fs')
-
 export enum Level {
     error, warn, info, verbose, debug
 }
@@ -190,6 +188,8 @@ export abstract class ConfigurableLogger extends BaseLogger {
 
 class FileLogger extends ConfigurableLogger {
 
+    fs: any
+
     private levelVar: LevelSpec
     get level() {
         return this.levelVar
@@ -211,7 +211,7 @@ class FileLogger extends ConfigurableLogger {
         this.errStackFlag = cfg.errStackFlag
 
         if (cfg.file) {
-            this.file = fs.openSync(cfg.file, 'a')
+            this.file = this.fs.openSync(cfg.file, 'a')
             this.info('Logging to ' + cfg.file)
         }
     }
@@ -261,7 +261,7 @@ class FileLogger extends ConfigurableLogger {
      */
     private writeLog(cfg: any, line: string): void {
         if (this.file >= 0) {
-            fs.writeSync(this.file, line + '\n')
+            this.fs.writeSync(this.file, line + '\n')
         }
 
         if (cfg.consoleFlag) {
@@ -301,6 +301,7 @@ export function proxyLogger(logger: SimpleLogger): ProxyLogger {
 
 export function fileLogger(config?: any): BaseLogger {
     const logger = new FileLogger()
+    logger.fs = require('fs')
     logger.config = config
     return logger
 }

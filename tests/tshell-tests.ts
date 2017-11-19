@@ -1,9 +1,8 @@
 import {cmd, exec, output, shell, subshell} from 'tshell'
 import {ShellListener, JobInfo, ExitStatus, ExitError} from 'tshell'
 
-declare function require(m: string): any
 require('source-map-support').install()
-require('process').on('unhandledRejection', (err, p) => console.log(err.stack))
+process.on('unhandledRejection', (err, p) => console.log(err.stack))
 
 function log(msg: string): void {
     console.log(message(msg))

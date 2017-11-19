@@ -22,7 +22,6 @@ EOF
  */
 
 import {defaultManager, RequestInfo} from './reqm'
-import logger from './slogger'
 
 const reqm = defaultManager()
 
@@ -321,7 +320,6 @@ abstract class PapertrailSearch {
             (err) => {
                 if (isNetworkError(err) && retryCount < this.retryMax) {
                     const n = retryCount + 1
-                    logger.info('retrievePage retry ' + n)
                     setTimeout(() => this.retrievePage(n), this.retryDelay)
                 } else {
                     this.retrieving = false
