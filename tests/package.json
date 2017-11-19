@@ -5,8 +5,8 @@
         "@types/node": "^7.0.22",
         "amqp": "~0.2.4",
         "amqplib": "~0.4.1",
-        "postera": "^0.2.0",
+        "postera": "^0.3.0",
         "redis": "^2.7.1",
-        "tshell": "^0.1.0"
+        "tshell": "^0.1.2"
     }
 }

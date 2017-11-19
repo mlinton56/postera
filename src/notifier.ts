@@ -146,9 +146,11 @@ export default class Notifier<T> {
      * the notification.
      */
     protected post(notification: string, ...args: any[]): void {
-        for (let listener of this.listenersVar) {
+        for (const listener of this.listenersVar) {
             const r = listener[notification]
             if (r) {
+                // TODO: Defer execution (like nextTick) and work in browsers.
+                // TODO: Implement Activity and ActivityManager.
                 r.apply(listener, args)
             }
         }
