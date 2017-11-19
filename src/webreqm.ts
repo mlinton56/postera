@@ -4,14 +4,49 @@
 
 import * as reqm from './reqm'
 
+//
+// Derived from URI Generic Syntax regular expression in RFC 3986,
+// with tweaks to split out the port and avoid some capturing.
+//
+const uriPattern = (
+    '^([^:/?#]+:)?' +           // [1] protocol
+    '(?://([^/?#:]*))?' +       // [2] hostname
+    '(?::([0-9]+))?' +          // [3] port
+    '([^?#]+)?' +               // [4] pathname
+    '(\\?[^#]*)?' +             // [5] search
+    '(#.*)?'                    // [6] hash
+)
+
+const uriRegExp = new RegExp(uriPattern)
+
+const forbiddenHeaderSet = (function() {
+    const s = new Set<string>()
+    for (const h of ['content-length', 'cookie', 'origin', 'keep-alive']) {
+        s.add(h)
+    }
+    return s
+})()
+
 export default class WebRequestManager extends reqm.RequestManager {
 
     newInfo(): reqm.RequestInfo {
         return new WebRequestInfo()
     }
 
-    optionsForUrl(url: string): reqm.RequestOptions {
-        return reqm.urlOptions(new URL(url))
+    optionsForUrl(str: string): reqm.RequestOptions {
+        const match = str.match(uriRegExp)
+        if (match) {
+            return reqm.urlOptions({
+                protocol: match[1],
+                hostname: match[2] ? match[2] : undefined,
+                port: match[3] && parseInt(match[3]),
+                pathname: match[4] || (match[2] && '/'),
+                search: match[5],
+                hash: match[6]
+            })
+        }
+
+        throw new Error('URL syntax error')
     }
 
     requestForInfo(r: reqm.RequestInfo): Promise<reqm.RequestInfo> {
@@ -23,7 +58,9 @@ export default class WebRequestManager extends reqm.RequestManager {
         const headers = options.headers
         if (headers) {
             for (const h of Object.keys(headers)) {
-                req.setRequestHeader(h, headers[h])
+                if (!forbiddenHeaderSet.has(h)) {
+                    req.setRequestHeader(h, headers[h])
+                }
             }
         }
 
@@ -106,11 +143,11 @@ class WebRequestInfo extends reqm.RequestInfo {
     }
 
     get statusCode() {
-        return this.response.status
+        return this.webRequest.status
     }
 
     get statusText() {
-        return this.response.statusText
+        return this.webRequest.statusText
     }
 
 }

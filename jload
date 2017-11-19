@@ -1,0 +1,219 @@
+#!/usr/bin/env node
+
+/**
+ * Nodejs app that loads JavaScript modules together into a single file.
+ *
+ * Usage:
+ *     node jload.js [-i include.js] [-json name=path] module...
+ *         [-main main.js] [-o out.js] 
+ *
+ * Dependent modules are automatically copied to the output.
+ *
+ * The -i flag copies a loaded file; that is, file output from jload.
+ * If no -i is specified then jload will implicitly copy webrt.js at the
+ * beginning of the output.
+ *
+ * The -json flag emits "const name = " followed by the contents of path.json.
+ * This flag allows embedding of a json file into the generated JavaScript.
+ *
+ * The -main flag simply copies the given file rather than defining it
+ * as a module.
+ */
+
+(function() {
+
+"use strict";
+
+const fs = require('fs');
+const path = require('path');
+
+const imports = [];
+const files = [];
+var mainFile;
+var traceFlag = false;
+var out = process.stdout;
+
+var currentDir = '';
+const globalEval = eval;
+
+const main = function(argv) {
+    const lib = path.resolve(path.dirname(argv[1]), 'src');
+
+    for (let i = 2; i < argv.length; ++i) {
+        const arg = argv[i];
+        if (arg[0] === '-') {
+            switch (arg) {
+            case '-i':
+            case '--include':
+                i = checkNextArg(i, argv);
+                importFile(argv[i]);
+                break;
+
+            case '-json':
+            case '--json':
+                i = checkNextArg(i, argv);
+                importJson(argv[i]);
+                break;
+
+            case '-o':
+            case '--out':
+                if (out !== process.stdout) {
+                    throw new Error('Only one -o flag allowed');
+                }
+
+                i = checkNextArg(i, argv);
+                out = fs.createWriteStream(argv[i], {encoding: 'utf8'});
+                break;
+
+            case '-t':
+            case '-trace':
+            case '--trace':
+                traceFlag = true;
+                break;
+
+            case '-main':
+            case '--main':
+                if (mainFile !== undefined) {
+                    throw new Error('Only one -main allowed');
+                }
+
+                i = checkNextArg(i, argv);
+                mainFile = argv[i];
+                break;
+
+            default:
+                throw new Error('Unexpected argument ' + arg);
+            }
+        } else {
+            if (imports.length === 0) {
+                importFile(path.resolve(lib, 'webrt.js'));
+            }
+            _jload_moduleVal('./', arg);
+        }
+    }
+
+    writeBundle(lib);
+};
+
+const checkNextArg = function(i, argv) {
+    const i1 = i + 1;
+    if (i1 >= argv.length) {
+        throw new Error('Missing argument after ' + argv[i]);
+    }
+    return i1;
+};
+
+const importFile = function(path) {
+    const content = readjs(path);
+    globalEval(content);
+    imports.push(content);
+};
+
+const importJson = function(arg) {
+    const nv = arg.split('=');
+    if (nv.length != 2) {
+        throw new Error('Usage: --json name=path');
+    }
+
+    const name = nv[0];
+    const path = nv[1] + '.json';
+    const content = 'const ' + name + ' = ' + readjson(path) + ';\n';
+    imports.push(content);
+};
+
+
+/**
+ * Special moduleVal implementation that overrides the runtime version
+ * to let us demand-load a reference to a module by reading the file.
+ */
+global._jload_moduleVal = function(dir, name) {
+    const m = _jload_moduleRef(dir, name);
+    if (m) {
+        return m;
+    }
+
+    const fullname = path.isAbsolute(name) ? name : path.normalize(dir + name);
+    const filename = fullname + '.js';
+
+    if (traceFlag) {
+        console.log('Loading ' + filename);
+    }
+
+    const rel = path.dirname(fullname) + '/';
+    const content = wrapper(filename, rel, readjs(filename));
+    const mm = globalEval('(' + content + ')();\n');
+    _jload_moduleAdd(fullname, mm);
+    files.push({
+        name: fullname,
+        filename: filename,
+        rel: rel,
+        content: content
+    });
+    return mm;
+};
+
+// Ensure trailing newline in case last line is non-newline-terminated comment.
+function readjs(path) {
+    return read(path) + '\n';
+}
+
+// Remove trailing newlines.
+function readjson(path) {
+    const json = read(path);
+    const n = json.length - 1;
+    var i = n;
+    while (i >= 0 && json[i] === '\n') {
+        --i;
+    }
+
+    return i != n ? json.slice(0, i + 1) : json
+}
+
+function read(path) {
+    return fs.readFileSync(path, 'utf8');
+}
+
+function wrapper(filename, rel, content) {
+    return (
+        'function() {\n' +
+        'var exports = {};\n' +
+        'function require(name) {\n' +
+        '    return _jload_moduleVal("' + rel + '", name);\n' +
+        '};\n' +
+        '(function() {\n' + content + '})();\n' +
+        '\nreturn exports;\n' +
+        '}'
+    );
+};
+
+
+const writeBundle = function(lib) {
+    for (let i = 0; i < imports.length; ++i) {
+        write(out, imports[i]);
+    }
+
+    for (let i = 0; i < files.length; ++i) {
+        const f = files[i];
+
+        write(out, '\n_jload_moduleAdd("' + f.name + '", (');
+        write(out, f.content);
+        write(out, ')());\n');
+    }
+
+    if (mainFile !== undefined) {
+        write(out, readjs(mainFile));
+    }
+
+    if (out !== process.stdout) {
+        out.end();
+    }
+};
+
+const write = function(out, content) {
+    out.write(content);
+};
+
+
+main(process.argv);
+
+})();

@@ -28,10 +28,10 @@ Options may be specified individually or together in a url option.
 
 The return value from a request is an instance of RequestInfo, which provides
 access to the request options (using the properties protocol, method, headers,
-et al.) and the response (using the responseHeader method and
-the responseType, statusCode, statusText, responseXml, responseBody, and result
+et al.) and the response (using the responseHeader method and the
+responseType, statusCode, statusText, responseXml, responseBody, and result
 getters). If the responseType is JSON then the result is JSON.parse called
-on the responseBody (or the error thrown by JSON.parse, if there is one).
+on the responseBody or the error thrown by JSON.parse, if there is one.
 
 The put, post, and patch methods take an additional body and
 optional type parameter. The body is optional for the del(ete) method.
