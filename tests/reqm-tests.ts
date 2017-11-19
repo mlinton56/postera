@@ -53,6 +53,7 @@ async function main() {
         const r = reqm.infoForOptions({method: 'GET'})
         const p = reqm.requestForInfo(r)
         reqm.cancellation(r)
+        await p
 
         // Redirection tests
         await reqm.get('http://google.com')
