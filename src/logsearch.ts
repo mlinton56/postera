@@ -358,14 +358,14 @@ abstract class PapertrailSearch {
             return
         }
 
-        const tail = this.apiParams.tail
         const events = p.events
         const n = events.length
         const startTime = this.startTime
         const stopTime = this.stopTime
         const start = startTime ? this.findTime(events, startTime) : 0
         const stop = stopTime ? this.findTime(events, stopTime) : n
-        if (!tail && this.noEvents(n, start, stop)) {
+        const tail = this.apiParams.tail
+        if (!tail && n > 0 && this.noEvents(n, start, stop)) {
             this.succeed()
             return
         }
