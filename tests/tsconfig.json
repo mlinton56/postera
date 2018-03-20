@@ -16,6 +16,7 @@
         "qio-tests.ts",
         "kstore-tests.ts",
         "reqm-tests.ts",
-        "logsearch-tests.ts"
+        "logsearch-tests.ts",
+        "echobase.ts"
     ]
 }

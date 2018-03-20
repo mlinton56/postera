@@ -5,8 +5,11 @@
         "@types/node": "^7.0.22",
         "amqp": "~0.2.4",
         "amqplib": "~0.4.1",
+        "ffi": "^2.2.0",
         "postera": "^0.3.0",
         "redis": "^2.7.1",
+        "source-map": "^0.7.2",
+        "source-map-support": "^0.5.4",
         "tshell": "^0.1.2"
     }
 }

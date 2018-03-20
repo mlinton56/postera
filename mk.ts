@@ -34,6 +34,9 @@ const sed = tshell.cmd('sed')
 
 
 const dependencies = {
+    'darwin-devices': ['devices'],
+    devices: ['dynlib', 'notifier'],
+    dynlib: [],
     kstore: ['slogger'],
     logsearch: ['reqm', 'slogger'],
     nodereqm: ['reqm'],
@@ -73,11 +76,11 @@ async function packList(argv: string[]) {
 }
 
 const externalModules = [
-    'tshell', 'slogger',
-    'notifier', 'qio', 'kstore', 'reqm', 'logsearch'
+    'tshell', 'slogger', 'dynlib',
+    'notifier', 'qio', 'kstore', 'reqm', 'logsearch', 'devices'
 ]
 
-const internalModules = [ 'nodereqm', 'webreqm' ]
+const internalModules = [ 'nodereqm', 'webreqm', 'darwin-devices' ]
 
 const pattern = escape('"doc/')
 const replace = escape('"https://github.com/mlinton56/postera/blob/master/doc/')
