@@ -16,10 +16,6 @@ export type Integer = number
 /**
  * Coord types are floating point numbers and resolution-independent:
  * one coordinate is 1/96th of an inch.
- *
- * Pixel types are integers and resolution-dependent.
- *
- * Unfortunately there is no current way to specify value types in TypeScript.
  */
 export type Coord = Float
 export type XCoord = Coord
@@ -33,12 +29,7 @@ export const mmInch = 25.4
 export const inch = coordInch
 export const pt = coordInch / pointsInch
 export const cm = coordInch / cmInch
-export const mm = coordInch/ mmInch
-
-
-export type PixelCoord = Integer
-export type XPixel = PixelCoord
-export type YPixel = PixelCoord
+export const mm = coordInch / mmInch
 
 export const zero = 0.0
 export const zeroX: XCoord = 0.0
@@ -83,6 +74,7 @@ export abstract class UserDevice extends Notifier<UserDeviceListener> {
         if (!d) {
             const cl = require('./' + impl + '-devices.js')['default']
             d = new cl()
+            d.init()
             devices.set(impl, d)
         }
 
@@ -100,17 +92,13 @@ export abstract class UserDevice extends Notifier<UserDeviceListener> {
 
     screens: Map<string,Screen>
 
-    private defaultScreenVar: Screen
-    get defaultScreen(): Screen {
-        return this.defaultScreenVar
+    protected init() {
+        this.screens = new Map<string,Screen>()
     }
 
-    protected defaultScreenMod(s: Screen): void {
-        this.defaultScreenVar = s
-        if (!this.screens) {
-            this.screens = new Map<string,Screen>()
-            this.screens.set('default', this.defaultScreenVar)
-        }
+    protected defaultScreenVar: Screen
+    get defaultScreen(): Screen {
+        return this.defaultScreenVar
     }
 
     /**
@@ -127,9 +115,14 @@ export abstract class UserDevice extends Notifier<UserDeviceListener> {
 }
 
 export class Screen {
+    left: XCoord
+    bottom: YCoord
+    right: XCoord
+    top: YCoord
     width: XCoord
     height: YCoord
     ppi: Float
+    coord: Float
 }
 
 

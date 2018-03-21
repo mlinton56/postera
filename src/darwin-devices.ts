@@ -14,7 +14,7 @@ const EnumValue = 'int32'
 
 const CFStringRef = 'pointer'
 const CFMachPortRef = 'pointer'
-const CFAllocatorRef = dynlib.voidPtr
+const CFAllocatorRef = dynlib.ptr('void')
 const CFIndex = 'int64'
 const CFRunLoop = 'pointer'
 const CFRunLoopMode = CFStringRef
@@ -34,6 +34,9 @@ const cf = dynlib.library('CoreFoundation.framework/CoreFoundation', {
     allocatorDefault: ['kCFAllocatorDefault', CFAllocatorRef]
 })
 
+
+const CGDirectDisplayId = 'uint32'
+const CGDirectDisplayIdArray = dynlib.array(CGDirectDisplayId)
 
 const CGFloat = 'double'
 
@@ -71,13 +74,17 @@ enum EventType {
 
 const EventFlags = 'uint64'
 const EventTimestamp = 'uint64'
-const EventRef = dynlib.voidPtr
+const EventRef = dynlib.ptr('void')
 const EventMask = 'uint64'
 
 const cg = dynlib.library('CoreGraphics.framework/CoreGraphics', {
-    mainDisplayId: ['CGMainDisplayID', [], 'uint32'],
-    displayBounds: ['CGDisplayBounds', ['uint32'], CGRect],
-    screenSize: ['CGDisplayScreenSize', ['uint32'], CGSize],
+    mainDisplay: ['CGMainDisplayID', [], CGDirectDisplayId],
+    activeDisplays: ['CGGetActiveDisplayList',
+        ['uint32', CGDirectDisplayIdArray, dynlib.ptr('uint32')],
+        'int32'
+    ],
+    displayBounds: ['CGDisplayBounds', [CGDirectDisplayId], CGRect],
+    screenSize: ['CGDisplayScreenSize', [CGDirectDisplayId], CGSize],
     eventTapNew: ['CGEventTapCreate',
         [EnumValue, EnumValue, 'int32', EventMask, 'pointer', 'pointer'],
         CFMachPortRef 
@@ -89,24 +96,19 @@ const cg = dynlib.library('CoreGraphics.framework/CoreGraphics', {
     eventUnflippedLocation: ['CGEventGetUnflippedLocation', [EventRef], CGPoint],
 })
 
+/**
+ * Implementation of a UserDevice on macOS.
+ *
+ * TODO: Need to support multiple monitors with different resolutions.
+ */
 export default class MacDevice extends devices.UserDevice {
 
-    private mainDisplayId: number
+    private displays: number[]
+    private mainDisplay: number
+    private screenList: devices.Screen[]
+    private multiFlag: boolean
     private tap: any
     private source: any
-
-    constructor() {
-        super()
-        const displayId = cg.mainDisplayId()
-        const mm = cg.screenSize(displayId)
-        const pixels = cg.displayBounds(displayId)
-        this.mainDisplayId = displayId
-        this.defaultScreenMod({
-            width: mm.width * devices.mm,
-            height: mm.height * devices.mm,
-            ppi: pixels.size.width / (mm.width / devices.mmInch)
-        })
-    }
 
 
     loopStart(): void {
@@ -138,12 +140,60 @@ export default class MacDevice extends devices.UserDevice {
         cf.runLoopStop(cf.runLoop())
     }
 
+    protected init(): void {
+        super.init()
+        this.screenList = []
+        const main = cg.mainDisplay()
+        const displays = new CGDirectDisplayIdArray(10)
+        const out = dynlib.alloc('uint32')
+        cg.activeDisplays(displays.length, displays, out)
+        const n = out.deref()
+        for (let i = 0; i < n; ++i) {
+            const d = displays[i]
+            const mm = cg.screenSize(d)
+            const pixels = cg.displayBounds(d)
+            const left = pixels.origin.x
+            const bottom = pixels.origin.y
+            const width = mm.width * devices.mm
+            const height = mm.height * devices.mm
+            const right = left + width
+            const top = bottom + height
+            const ppi = pixels.size.width * devices.mmInch / mm.width
+            const coord = devices.coordInch / ppi
+            const screen: devices.Screen = {
+                left, bottom, right, top, width, height, ppi, coord
+            }
+            this.screens.set(d.toString(), screen)
+            this.screenList.push(screen)
+            if (d === cg.mainDisplay()) {
+                this.mainDisplay = d
+                this.defaultScreenVar = screen
+            }
+        }
+        this.multiFlag = this.screenList.length > 1
+    }
+
     private postEvent(type: EventType, eventRef): void {
         if (type === EventType.mouseMoved) {
-            const ts = cg.eventTimestamp(eventRef)
+            const timestamp = cg.eventTimestamp(eventRef)
             const p = cg.eventUnflippedLocation(eventRef)
-            this.post('mouseMoved', {timestamp: ts, x: p.x, y: p.y})
+            const screen = this.multiFlag ? this.screenFor(p) : this.defaultScreen
+            const x = p.x * screen.coord
+            const y = p.y * screen.coord
+            this.post('mouseMoved', {timestamp, x, y})
         }
+    }
+
+    private screenFor(p): devices.Screen {
+        for (const s of this.screenList) {
+            if (p.x >= s.left && p.x < s.left + s.width &&
+                p.y >= s.bottom && p.y < s.bottom + s.height
+            ) {
+                return s
+            }
+        }
+
+        return this.defaultScreen
     }
 
 }

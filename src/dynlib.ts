@@ -7,7 +7,6 @@
 
 const ffi = require('ffi')
 const ref = require('ref')
-const Struct = require('ref-struct')
 
 
 type DynamicLibrary = any
@@ -62,9 +61,8 @@ export function callback(p: any[], type: any, f: any): any {
 }
 
 export const types = ref.types
-export const voidPtr = ref.refType(ref.types.void)
-export const struct = Struct
 
-export function ptr(type) {
-    return ref.refType(type)
-}
+export const ptr = ref.refType.bind(ref)
+export const alloc = ref.alloc.bind(ref)
+export const array = require('ref-array')
+export const struct = require('ref-struct')
