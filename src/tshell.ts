@@ -6,7 +6,7 @@
  * Use of this source code is governed by the MIT-style license that is
  * in the LICENSE file or at https://opensource.org/licenses/MIT.
  *
-VERSION 0.1.2
+VERSION 0.1.3
 README
 ## tshell
 

@@ -1,4 +1,4 @@
-VERSION 0.3.0
+VERSION 0.3.1
 Modules for developing and connecting software components
 README
 ## postera
