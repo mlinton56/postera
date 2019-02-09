@@ -20,7 +20,7 @@ is an interface containing optional methods.
         yModified?(n: MyClass, y: number): void
     }
 
-    export class MyClass extends Notifier {
+    export class MyClass extends Notifier<MyListener> {
         private xVar: number
         get x() { return this.xVar }
         set x(x0) {

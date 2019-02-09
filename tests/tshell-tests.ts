@@ -17,26 +17,39 @@ function message(body?: string): string {
 
 class TestListener implements ShellListener {
 
+    failed(job: JobInfo, err) {
+        this.log('failed', job, err.code)
+    }
+
+    protected log(name: string, job: JobInfo, s?: ExitStatus) {
+        if (s) {
+            console.log(`${name} [${job.ident}] ${job.cmdline}: ${s.toString()}`)
+        } else {
+            console.log(`${name} [${job.ident}] ${job.cmdline}`)
+        }
+    }
+
+}
+
+class TestListenerOne extends TestListener {
+
     started(job: JobInfo) {
         this.log('started', job)
     }
 
+}
+
+class TestListenerTwo extends TestListener {
+
     finished(job: JobInfo, status: ExitStatus) {
-        this.log('finished', job)
-    }
-
-    failed(job: JobInfo, status: ExitStatus) {
-        this.log('failed', job)
-    }
-
-    private log(n: string, job: JobInfo) {
-        console.log(n + ' [' + job.ident + '] ' + job.cmdline)
+        this.log('finished', job, status)
     }
 
 }
 
 (async function() {
-    shell().listenerAdd(new TestListener())
+    shell().listenerAdd(new TestListenerOne())
+    shell().listenerAdd(new TestListenerTwo())
 
     const bash = cmd('bash', '-c')
     const echo = cmd('echo')

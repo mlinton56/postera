@@ -30,7 +30,7 @@ is an interface containing optional methods.
         yModified?(n: MyClass, y: number): void
     }
 
-    export class MyClass extends Notifier {
+    export class MyClass extends Notifier<MyListener> {
         private xVar: number
         get x() { return this.xVar }
         set x(x0) {
@@ -149,8 +149,10 @@ export default class Notifier<T> {
         for (const listener of this.listenersVar) {
             const r = listener[notification]
             if (r) {
-                // TODO: Defer execution (like nextTick) and work in browsers.
-                // TODO: Implement Activity and ActivityManager.
+                // TODO: Implement activities, which implies adding the reaction
+                // to a queue for the listener's activity and letting that
+                // activity execute the reaction later instead of executing
+                // directly in this calling environment.
                 r.apply(listener, args)
             }
         }

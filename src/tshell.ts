@@ -194,7 +194,7 @@ export function cmd(prog: Program, ...args: string[]): Cmd {
         return promise(prog, args.concat(args2))
     }
 
-    const c = <Cmd>(f)
+    const c = f as Cmd
     c.prog = prog
     c.args = args
     return c
@@ -211,7 +211,7 @@ export function subshell(body: ShellFunc): Cmd {
         return promise(body, args)
     }
 
-    const c = <Cmd>(f)
+    const c = f as Cmd
     c.prog = body
     return c
 }
@@ -247,8 +247,8 @@ export class JobInfo {
             return line(p, this.args)
         }
 
-        const command = <Cmd>p
-        const func = <ShellFunc>(command.prog)
+        const command = p as Cmd
+        const func = command.prog as ShellFunc
         return func.name + '()'
     }
 }
@@ -304,7 +304,7 @@ function execArgs(arglist: ExecArg[]): ExecArgs {
             args = <string[]>arglist
         } else {
             args = <string[]>arglist.slice(0, -1)
-            context = <Context>(arglist[n])
+            context = arglist[n] as Context
         }
 
         // Sigh.
@@ -358,7 +358,7 @@ export function output(p: Program, ...arglist: ExecArg[]): Promise<string> {
                 } else {
                     returnError((typeof status === 'number') ?
                         new ExitError(task.cmdline(), <number>status) :
-                        <Error>status
+                        status as Error
                     )
                 }
             },
@@ -476,7 +476,7 @@ class ShellContext extends Context {
      */
     private merge(context?: Context): void {
         if (context) {
-            for (let p of Object.keys(context)) {
+            for (const p of Object.keys(context)) {
                 if (context[p] !== undefined &&
                     p !== 'env' && p !== 'listener' && p !== 'listeners'
                 ) {
@@ -627,7 +627,7 @@ class ShellImpl implements Shell {
 
         case 'function':
             // Task runs ShellFunc body in new shell.
-            return ShellTask.initial(this, <ShellFunc>((<Cmd>p).prog), job)
+            return ShellTask.initial(this, ((p as Cmd).prog) as ShellFunc, job)
 
         default:
             throw new Error('Unexpected type ' + (typeof p))
@@ -832,12 +832,12 @@ abstract class CmdTask {
             if (typeof s === 'number') {
                 err = new ExitError(this.cmdline(), <number>s)
             } else {
-                err = <Error>s
+                err = s as Error
             }
 
             sh.status = err
             this.rejectFunc.call(null, err)
-            this.post('failed', this.job, s)
+            this.post('failed', this.job, err)
         }
     }
 
@@ -858,8 +858,11 @@ abstract class CmdTask {
     }
 
     private post(notification: string, ...args: any[]): void {
-        for (let listener of this.context.listeners) {
-            process.nextTick(() => listener[notification].apply(listener, args))
+        for (const listener of this.context.listeners) {
+            const reaction = listener[notification]
+            if (reaction) {
+                process.nextTick(() => reaction.apply(listener, args))
+            }
         }
     }
 
@@ -984,7 +987,7 @@ function flatten(prog: Program, args: string[], job: JobInfo): void {
     
     let p = prog
     while (typeof p !== 'string' && p['args']) {
-        const c = <Cmd>p
+        const c = p as Cmd
         if (visited.has(c)) {
             throw new Error('Command reference cycle')
         }
